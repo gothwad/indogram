@@ -1,5 +1,6 @@
 import type {
   ApiAttachBot,
+  ApiBirthday,
   ApiBoost,
   ApiBoostsStatus,
   ApiChannelMonetizationStatistics,
@@ -9,9 +10,9 @@ import type {
   ApiChatType,
   ApiCheckedGiftCode,
   ApiCollectibleInfo,
-  ApiContact,
+  ApiComposedMessageWithAI,
+  ApiDialog,
   ApiEmojiStatusCollectible,
-  ApiError,
   ApiFormattedText,
   ApiGeoPoint,
   ApiGlobalMessageSearchType,
@@ -43,16 +44,20 @@ import type {
   ApiStarGiftAttribute,
   ApiStarGiftAttributeCounter,
   ApiStarGiftAttributeOriginalDetails,
+  ApiStarGiftAuctionAcquiredGift,
   ApiStarGiftUnique,
+  ApiStarGiftUpgradePrice,
   ApiStarGiveawayOption,
   ApiStarsSubscription,
   ApiStarsTransaction,
   ApiStarTopupOption,
   ApiSticker,
+  ApiThumbnail,
   ApiTypeCurrencyAmount,
   ApiTypePrepaidGiveaway,
   ApiTypeStoryView,
   ApiUniqueStarGiftValueInfo,
+  ApiUrlAuthResultRequest,
   ApiUser,
   ApiVideo,
 } from '../../api/types';
@@ -77,6 +82,7 @@ import type {
   MediaViewerMedia,
   MediaViewerOrigin,
   MessageList,
+  MessageListType,
   MiddleSearchParams,
   NewChatMembersProgress,
   PaymentStep,
@@ -97,6 +103,17 @@ import type { SearchResultKey } from '../../util/keys/searchResultKey';
 import type { RegularLangFnParameters } from '../../util/localization';
 import type { ProfileCollectionKey } from '../selectors/payments';
 import type { CallbackAction } from './actions';
+
+export type PollVote = {
+  peerId: string;
+  date: number;
+};
+
+export type AiEditorTabBase = {
+  isLoading?: boolean;
+  result?: ApiComposedMessageWithAI;
+  error?: 'floodPremium' | 'aiError' | 'generic';
+};
 
 export type TabState = {
   id: number;
@@ -376,7 +393,6 @@ export type TabState = {
     messageId?: number;
     threadId?: ThreadId;
     origin?: AudioOrigin;
-    volume: number;
     playbackRate: number;
     isPlaybackRateActive?: boolean;
     timestamp?: number;
@@ -415,7 +431,7 @@ export type TabState = {
   pollResults: {
     chatId?: string;
     messageId?: number;
-    voters?: Record<string, string[]>; // TODO Rename to `voterIds`
+    votesByOption?: Record<string, PollVote[]>;
     offsets?: Record<string, string>;
   };
 
@@ -481,7 +497,7 @@ export type TabState = {
   };
 
   notifications: ApiNotification[];
-  dialogs: (ApiError | ApiContact)[];
+  dialogs: ApiDialog[];
 
   safeLinkModalUrl?: string;
   mapModal?: {
@@ -552,8 +568,10 @@ export type TabState = {
     filter?: ApiChatType[];
   };
 
-  pollModal: {
-    isOpen: boolean;
+  pollModal?: {
+    chatId: string;
+    threadId?: ThreadId;
+    messageListType: MessageListType;
     isQuiz?: boolean;
   };
 
@@ -637,11 +655,8 @@ export type TabState = {
       messageId: number;
       buttonId: number;
     };
-    request?: {
-      domain: string;
-      botId: string;
-      shouldRequestWriteAccess?: boolean;
-    };
+    matchCode?: string;
+    request?: Omit<ApiUrlAuthResultRequest, 'type' | 'bot'> & { botId: string };
     url: string;
   };
 
@@ -652,9 +667,39 @@ export type TabState = {
     fromUserId?: string;
     toUserId?: string;
     isGift?: boolean;
-    monthsAmount?: number;
+    daysAmount?: number;
     isSuccess?: boolean;
     gift?: ApiStarGift;
+  };
+
+  aiMessageEditorModal?: {
+    chatId: string;
+    text: ApiFormattedText;
+    activeTab: 'translate' | 'style' | 'fix';
+    isFromAttachment?: boolean;
+    translateTab?: AiEditorTabBase & {
+      selectedLanguage?: string;
+      selectedTone?: string;
+      shouldEmojify?: boolean;
+      cache?: Record<string, ApiComposedMessageWithAI>;
+    };
+    styleTab?: AiEditorTabBase & {
+      selectedTone?: string;
+      shouldEmojify?: boolean;
+      cache?: Record<string, ApiComposedMessageWithAI>;
+    };
+    fixTab?: AiEditorTabBase & {
+      cache?: ApiComposedMessageWithAI;
+    };
+  };
+
+  aiMessageEditorPendingResult?: {
+    text?: ApiFormattedText;
+    shouldClear?: boolean;
+    shouldSendWithAttachments?: boolean;
+    isSilent?: boolean;
+    scheduledAt?: number;
+    scheduleRepeatPeriod?: number;
   };
 
   giveawayModal?: {
@@ -677,6 +722,8 @@ export type TabState = {
   isWebAppsCloseConfirmationModalOpen?: boolean;
 
   isGiftRecipientPickerOpen?: boolean;
+
+  isQuickChatPickerOpen?: boolean;
 
   isFrozenAccountModalOpen?: boolean;
 
@@ -702,10 +749,15 @@ export type TabState = {
     forPeerId: string;
     gifts?: ApiPremiumGiftCodeOption[];
     selectedResaleGift?: ApiStarGift;
+    selectedGift?: ApiPremiumGiftCodeOption | ApiStarGift;
   };
   chatRefundModal?: {
     userId: string;
     starsToRefund: number;
+  };
+
+  disableSharingAboutModal?: {
+    userId: string;
   };
 
   limitReachedModal?: {
@@ -782,6 +834,10 @@ export type TabState = {
 
   isAgeVerificationModalOpen?: boolean;
 
+  birthdaySetupModal?: {
+    currentBirthday?: ApiBirthday;
+  };
+
   paidReactionModal?: {
     chatId: string;
     messageId: number;
@@ -831,6 +887,7 @@ export type TabState = {
     peerId?: string;
     recipientId?: string;
     gift: ApiSavedStarGift | ApiStarGift;
+    craftSlotIndex?: number;
   };
 
   giftInfoValueModal?: {
@@ -863,10 +920,60 @@ export type TabState = {
     details: ApiStarGiftAttributeOriginalDetails;
   };
 
+  giftOfferAcceptModal?: {
+    peerId: string;
+    messageId: number;
+    gift: ApiStarGiftUnique;
+    price: ApiTypeCurrencyAmount;
+  };
+
   giftUpgradeModal?: {
     sampleAttributes: ApiStarGiftAttribute[];
     recipientId?: string;
     gift?: ApiSavedStarGift;
+    prices?: ApiStarGiftUpgradePrice[];
+    nextPrices?: ApiStarGiftUpgradePrice[];
+    currentUpgradeStars?: number;
+    minPrice?: number;
+    maxPrice?: number;
+  };
+
+  giftCraftModal?: {
+    regularGiftId?: string;
+    regularGiftTitle?: string;
+    gift1?: ApiSavedStarGift;
+    gift2?: ApiSavedStarGift;
+    gift3?: ApiSavedStarGift;
+    gift4?: ApiSavedStarGift;
+    previewAttributes?: ApiStarGiftAttribute[];
+    myCraftableGifts?: ApiSavedStarGift[];
+    myCraftableGiftsNextOffset?: string;
+    shouldRefreshMyCraftableGifts?: boolean;
+    marketCraftableGifts?: ApiStarGiftUnique[];
+    marketCraftableGiftsNextOffset?: string;
+    marketCraftableGiftsCount?: number;
+    isMarketLoading?: boolean;
+    marketFilter: ResaleGiftsFilterOptions;
+    marketAttributes?: ApiStarGiftAttribute[];
+    marketCounters?: ApiStarGiftAttributeCounter[];
+    marketAttributesHash?: string;
+    marketUpdateIteration: number;
+    craftResult?: {
+      success: true;
+      gift: ApiStarGiftUnique;
+    } | {
+      success: false;
+      isError?: true;
+    };
+  };
+
+  giftCraftSelectModal?: {
+    slotIndex: number;
+    isLoading?: boolean;
+  };
+
+  giftCraftInfoModal?: {
+    gift: ApiStarGiftUnique;
   };
 
   giftWithdrawModal?: {
@@ -877,6 +984,57 @@ export type TabState = {
 
   giftStatusInfoModal?: {
     emojiStatus: ApiEmojiStatusCollectible;
+  };
+
+  giftPreviewModal?: {
+    attributes: ApiStarGiftAttribute[];
+    originGift: ApiStarGift;
+    shouldShowCraftableOnStart?: boolean;
+  };
+
+  giftAuctionModal?: {
+    auctionGiftId: string;
+    sampleAttributes?: ApiStarGiftAttribute[];
+  };
+
+  giftAuctionBidModal?: {
+    auctionGiftId: string;
+    peerId?: string;
+    message?: string;
+    shouldHideName?: boolean;
+  };
+
+  giftAuctionInfoModal?: {
+    auctionGiftId: string;
+  };
+
+  aboutStarGiftModal?: {
+    videoId?: string;
+    videoThumbnail?: ApiThumbnail;
+  };
+
+  giftAuctionChangeRecipientModal?: {
+    auctionGiftId: string;
+    oldPeerId?: string;
+    newPeerId?: string;
+    message?: string;
+    shouldHideName?: boolean;
+  };
+
+  giftAuctionAcquiredModal?: {
+    giftId?: string;
+    giftTitle?: string;
+    giftSticker?: ApiSticker;
+    acquiredGifts?: ApiStarGiftAuctionAcquiredGift[];
+  };
+
+  activeGiftAuctionsModal?: true;
+
+  starGiftPriceDecreaseInfoModal?: {
+    prices: ApiStarGiftUpgradePrice[];
+    currentPrice: number;
+    minPrice: number;
+    maxPrice: number;
   };
 
   suggestedStatusModal?: {
@@ -902,8 +1060,35 @@ export type TabState = {
     threadId?: ThreadId;
   };
 
+  isPasskeyModalOpen?: boolean;
+
+  leaveGroupModal?: {
+    chatId: string;
+    nextOwnerId?: string;
+  };
+
+  isTwoFaCheckModalOpen?: true;
+
   isWaitingForStarGiftUpgrade?: true;
   isWaitingForStarGiftTransfer?: true;
   insertingPeerIdMention?: string;
   shouldSaveAttachmentsCompression?: boolean;
+
+  isCocoonModalOpen?: boolean;
+
+  rankModal?: {
+    chatId: string;
+    userId: string;
+    isAdmin?: boolean;
+    isOwner?: boolean;
+    rank?: string;
+  };
+  editRankModal?: {
+    chatId: string;
+    userId: string;
+    isAdmin?: boolean;
+    isOwner?: boolean;
+    rank?: string;
+  };
+  shouldOpenMessageMediaEditor?: boolean;
 };

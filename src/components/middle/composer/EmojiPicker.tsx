@@ -24,7 +24,6 @@ import useOldLang from '../../../hooks/useOldLang';
 import useScrolledState from '../../../hooks/useScrolledState';
 import useAsyncRendering from '../../right/hooks/useAsyncRendering';
 
-import Icon from '../../common/icons/Icon';
 import Button from '../../ui/Button';
 import Loading from '../../ui/Loading';
 import Transition from '../../ui/Transition.tsx';
@@ -148,7 +147,7 @@ const EmojiPicker: FC<OwnProps & StateProps> = ({
 
   // Initialize data on first render.
   useEffect(() => {
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       const exec = () => {
         setCategories(emojiData.categories);
 
@@ -162,6 +161,10 @@ const EmojiPicker: FC<OwnProps & StateProps> = ({
           .then(exec);
       }
     }, OPEN_ANIMATION_DELAY);
+
+    return () => {
+      clearTimeout(timeout);
+    };
   }, []);
 
   const selectCategory = useLastCallback((index: number) => {
@@ -190,12 +193,10 @@ const EmojiPicker: FC<OwnProps & StateProps> = ({
         round
         faded
         color="translucent"
-
         onClick={() => selectCategory(index)}
         ariaLabel={category.name}
-      >
-        <Icon name={icon} />
-      </Button>
+        iconName={icon}
+      />
     );
   }
 

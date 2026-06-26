@@ -23,7 +23,6 @@ import useOldLang from '../../../hooks/useOldLang';
 import useShowTransitionDeprecated from '../../../hooks/useShowTransitionDeprecated';
 
 import CustomEmojiPicker from '../../common/CustomEmojiPicker';
-import Icon from '../../common/icons/Icon';
 import Button from '../../ui/Button';
 import Menu from '../../ui/Menu';
 import Portal from '../../ui/Portal';
@@ -57,6 +56,7 @@ export type OwnProps = {
     canUpdateStickerSetsOrder?: boolean,
   ) => void;
   onGifSelect?: (gif: ApiVideo, isSilent?: boolean, shouldSchedule?: boolean) => void;
+  onGifAddCaption?: (gif: ApiVideo) => void;
   onRemoveSymbol: () => void;
   onSearchOpen: (type: 'stickers' | 'gifs') => void;
   addRecentEmoji: GlobalActions['addRecentEmoji'];
@@ -92,6 +92,7 @@ const SymbolMenu: FC<OwnProps & StateProps> = ({
   onCustomEmojiSelect,
   onStickerSelect,
   onGifSelect,
+  onGifAddCaption,
   onRemoveSymbol,
   onSearchOpen,
   addRecentEmoji,
@@ -240,6 +241,7 @@ const SymbolMenu: FC<OwnProps & StateProps> = ({
             loadAndPlay={canSendGifs ? isOpen && (isActive || isFrom) : false}
             canSendGifs={canSendGifs}
             onGifSelect={onGifSelect}
+            onGifAddCaption={onGifAddCaption}
           />
         );
     }
@@ -273,9 +275,8 @@ const SymbolMenu: FC<OwnProps & StateProps> = ({
           className="symbol-close-button"
           size="tiny"
           onClick={onClose}
-        >
-          <Icon name="close" />
-        </Button>
+          iconName="close"
+        />
       )}
       <SymbolMenuFooter
         activeTab={activeTab}

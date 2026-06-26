@@ -7,7 +7,7 @@ import type { ApiMessageActionPhoneCall } from '../../../api/types/messageAction
 
 import { ARE_CALLS_SUPPORTED } from '../../../util/browser/windowEnvironment';
 import buildClassName from '../../../util/buildClassName';
-import { formatTime, formatTimeDuration } from '../../../util/dates/dateFormat';
+import { formatTime, formatTimeDuration } from '../../../util/dates/oldDateFormat';
 import { getCallMessageKey } from './helpers/messageActions';
 
 import useLastCallback from '../../../hooks/useLastCallback';
@@ -59,9 +59,8 @@ const MessagePhoneCall: FC<OwnProps> = ({
         className={styles.button}
         disabled={!ARE_CALLS_SUPPORTED}
         ariaLabel={lang(isOutgoing ? 'CallAgain' : 'CallBack')}
-      >
-        <Icon name={isVideo ? 'video-outlined' : 'phone'} />
-      </Button>
+        iconName={isVideo ? 'video-outlined' : 'phone'}
+      />
       <div className={styles.info}>
         <div className={styles.reason}>{lang(getCallMessageKey(phoneCall, message.isOutgoing))}</div>
         <div className={styles.meta}>

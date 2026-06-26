@@ -1,10 +1,11 @@
 import {
   beginHeavyAnimation,
-  memo, useEffect, useMemo, useRef, useState,
+  memo, useCallback, useEffect, useMemo, useRef, useState,
 } from '../../../../lib/teact/teact';
 import { getActions, withGlobal } from '../../../../global';
 
 import type { ApiChat } from '../../../../api/types';
+import type { GlobalState } from '../../../../global/types';
 import type { TopicsInfo } from '../../../../types';
 import { MAIN_THREAD_ID } from '../../../../api/types';
 
@@ -18,17 +19,22 @@ import {
   selectChat,
   selectCurrentMessageList,
   selectIsForumPanelOpen,
+  selectIsSynced,
   selectTabState,
   selectTopicsInfo,
 } from '../../../../global/selectors';
+import { selectThread } from '../../../../global/selectors/threads';
 import { IS_TOUCH_ENV } from '../../../../util/browser/windowEnvironment';
 import buildClassName from '../../../../util/buildClassName';
 import captureEscKeyListener from '../../../../util/captureEscKeyListener';
 import { captureEvents, SwipeDirection } from '../../../../util/captureEvents';
 import { waitForTransitionEnd } from '../../../../util/cssAnimationEndListeners';
 import { isUserId } from '../../../../util/entities/ids';
+import { mapTruthyValues, mapValues } from '../../../../util/iteratees';
 
+import useSelector from '../../../../hooks/data/useSelector';
 import useAppLayout from '../../../../hooks/useAppLayout';
+import useEffectWithPrevDeps from '../../../../hooks/useEffectWithPrevDeps';
 import useHistoryBack from '../../../../hooks/useHistoryBack';
 import useInfiniteScroll from '../../../../hooks/useInfiniteScroll';
 import { useIntersectionObserver, useOnIntersect } from '../../../../hooks/useIntersectionObserver';
@@ -39,7 +45,6 @@ import useOrderDiff from '../hooks/useOrderDiff';
 
 import GroupCallTopPane from '../../../calls/group/GroupCallTopPane';
 import GroupChatInfo from '../../../common/GroupChatInfo';
-import Icon from '../../../common/icons/Icon';
 import PrivateChatInfo from '../../../common/PrivateChatInfo';
 import HeaderActions from '../../../middle/HeaderActions';
 import Button from '../../../ui/Button';
@@ -63,6 +68,7 @@ type StateProps = {
   chat?: ApiChat;
   topicsInfo?: TopicsInfo;
   currentTopicId?: number;
+  isSynced?: boolean;
   withInterfaceAnimations?: boolean;
 };
 
@@ -73,6 +79,7 @@ const ForumPanel = ({
   currentTopicId,
   isOpen,
   isHidden,
+  isSynced,
   topicsInfo,
   withInterfaceAnimations,
   onTopicSearch,
@@ -90,11 +97,13 @@ const ForumPanel = ({
   const { isMobile } = useAppLayout();
   const chatId = chat?.id;
 
-  useEffect(() => {
-    if (chatId && !topicsInfo) {
-      loadTopics({ chatId });
+  useEffectWithPrevDeps(([prevIsSynced]) => {
+    if (!isSynced) return;
+    const hasJustSynced = prevIsSynced === false;
+    if (chatId && (hasJustSynced || !topicsInfo)) {
+      loadTopics({ chatId, force: hasJustSynced });
     }
-  }, [topicsInfo, chatId]);
+  }, [isSynced, chatId, topicsInfo]);
 
   const [isScrolled, setIsScrolled] = useState(false);
   const lang = useLang();
@@ -123,10 +132,18 @@ const ForumPanel = ({
     setIsScrolled(!isIntersecting);
   });
 
+  const topicsThreadSelector = useCallback((global: GlobalState) => {
+    if (!chat?.id) return undefined;
+    return mapTruthyValues(topicsInfo?.topicsById || {}, (t) => selectThread(global, chat.id, t.id));
+  }, [chat?.id, topicsInfo?.topicsById]);
+  const topicsThreads = useSelector(topicsThreadSelector);
+
   const orderedIds = useMemo(() => {
-    const ids = topicsInfo
+    const topicsThreadInfos = topicsThreads && mapValues(topicsThreads, (t) => t.threadInfo);
+    const ids = topicsInfo && topicsThreads
       ? getOrderedTopics(
         Object.values(topicsInfo.topicsById),
+        topicsThreadInfos,
         topicsInfo.orderedPinnedTopicIds,
       ).map(({ id }) => id)
       : [];
@@ -134,12 +151,12 @@ const ForumPanel = ({
     if (!chat?.isBotForum) return ids;
 
     return [MAIN_THREAD_ID, ...ids];
-  }, [chat?.isBotForum, topicsInfo]);
+  }, [chat?.isBotForum, topicsInfo, topicsThreads]);
 
-  const { orderDiffById, getAnimationType, onReorderAnimationEnd } = useOrderDiff(orderedIds, chat?.id);
+  const { orderDiffById, shiftDiff, getAnimationType, onReorderAnimationEnd } = useOrderDiff(orderedIds, 0, chat?.id);
 
   const [viewportIds, getMore] = useInfiniteScroll(() => {
-    if (!chat) return;
+    if (!chat || !isSynced) return;
     loadTopics({ chatId: chat.id });
   }, orderedIds, !topicsInfo?.totalCount || orderedIds.length >= topicsInfo.totalCount, TOPICS_SLICE);
 
@@ -224,6 +241,7 @@ const ForumPanel = ({
           observeIntersection={observe}
           animationType={getAnimationType(id)}
           orderDiff={orderDiffById[id]}
+          shiftDiff={shiftDiff}
           onReorderAnimationEnd={onReorderAnimationEnd}
         />
       );
@@ -252,9 +270,8 @@ const ForumPanel = ({
           color="translucent"
           onClick={handleClose}
           ariaLabel={lang('Close')}
-        >
-          <Icon name="close" />
-        </Button>
+          iconName="close"
+        />
 
         {isUserId(chat.id) ? (
           <PrivateChatInfo
@@ -325,6 +342,7 @@ export default memo(withGlobal<OwnProps>(
     return {
       chat,
       currentTopicId: chatId === currentChatId ? Number(currentThreadId) : undefined,
+      isSynced: selectIsSynced(global),
       withInterfaceAnimations: selectCanAnimateInterface(global),
       topicsInfo,
     };

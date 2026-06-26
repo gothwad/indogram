@@ -16,7 +16,8 @@ import {
   getWebPagePhoto,
   getWebPageVideo,
 } from '../../../global/helpers';
-import { selectNoWebPage, selectTabState, selectWebPage } from '../../../global/selectors';
+import { selectTabState, selectWebPage } from '../../../global/selectors';
+import { selectNoWebPage } from '../../../global/selectors/threads';
 import buildClassName from '../../../util/buildClassName';
 
 import useThumbnail from '../../../hooks/media/useThumbnail';
@@ -236,9 +237,8 @@ const WebPagePreview = ({
           color="translucent"
           ariaLabel={lang('AccLinkRemovePreview')}
           onClick={handleClearWebpagePreview}
-        >
-          <Icon name="close" />
-        </Button>
+          iconName="close"
+        />
         {!isEditing && renderContextMenu()}
       </div>
     </div>

@@ -7,12 +7,13 @@ import type {
 } from '../api/types';
 import type { MessageList, ThreadId } from '../types';
 import type { ActionReturnType, GlobalState, SharedState } from './types';
-import { MAIN_THREAD_ID } from '../api/types';
+import { ApiMessageEntityTypes, MAIN_THREAD_ID } from '../api/types';
 
 import {
   ALL_FOLDER_ID, ANIMATION_LEVEL_DEFAULT,
   ARCHIVED_FOLDER_ID,
   DEBUG,
+  FOLDERS_POSITION_DEFAULT,
   GLOBAL_STATE_CACHE_ARCHIVED_CHAT_LIST_LIMIT,
   GLOBAL_STATE_CACHE_CHAT_LIST_LIMIT,
   GLOBAL_STATE_CACHE_CUSTOM_EMOJI_LIMIT,
@@ -21,7 +22,6 @@ import {
   IS_SCREEN_LOCKED_CACHE_KEY,
   SAVED_FOLDER_ID,
   SHARED_STATE_CACHE_KEY,
-  TABS_POSITION_DEFAULT,
 } from '../config';
 import { MAIN_IDB_STORE } from '../util/browser/idb';
 import { isUserId } from '../util/entities/ids';
@@ -33,6 +33,7 @@ import { GLOBAL_STATE_CACHE_KEY } from '../util/multiaccount';
 import { encryptSession } from '../util/passcode';
 import { onBeforeUnload, throttle } from '../util/schedulers';
 import { hasStoredSession } from '../util/sessions';
+import { selectThreadInfo } from './selectors/threads';
 import { addActionHandler, getGlobal } from './index';
 import { INITIAL_GLOBAL_STATE, INITIAL_PERFORMANCE_STATE_MED } from './initialState';
 import { clearGlobalForLockScreen, clearSharedStateForLockScreen } from './reducers';
@@ -42,6 +43,7 @@ import {
   selectCurrentMessageList,
   selectFullWebPageFromMessage,
   selectTopics,
+  selectTopicsInfo,
   selectViewportIds,
   selectVisibleUsers,
 } from './selectors';
@@ -55,6 +57,7 @@ const updateCacheForced = () => updateCache(true);
 
 let isCaching = false;
 let isRemovingCache = false;
+let cacheUpdateSuspensionTimestamp = 0;
 let unsubscribeFromBeforeUnload: NoneToVoidFunction | undefined;
 
 export function cacheGlobal(global: GlobalState) {
@@ -314,7 +317,7 @@ function unsafeMigrateCache(cached: GlobalState, initialState: GlobalState) {
     cached.sharedState.settings = {
       canDisplayChatInTitle: untypedCached.settings.byKey.canDisplayChatInTitle,
       animationLevel: untypedCached.settings.byKey.animationLevel,
-      tabsPosition: untypedCached.settings.byKey.tabsPosition,
+      foldersPosition: FOLDERS_POSITION_DEFAULT,
       messageSendKeyCombo: untypedCached.settings.byKey.messageSendKeyCombo,
       messageTextSize: untypedCached.settings.byKey.messageTextSize,
       performance: untypedCached.settings.performance,
@@ -350,30 +353,65 @@ function unsafeMigrateCache(cached: GlobalState, initialState: GlobalState) {
     cachedSharedSettings.performance = INITIAL_PERFORMANCE_STATE_MED;
   }
 
-  if (!cachedSharedSettings.tabsPosition) {
-    cachedSharedSettings.tabsPosition = TABS_POSITION_DEFAULT;
+  if (cachedSharedSettings.performance.messageBlur === undefined) {
+    cachedSharedSettings.performance.messageBlur = false;
+  }
+
+  if (cachedSharedSettings.performance.textStreaming === undefined) {
+    cachedSharedSettings.performance.textStreaming = true;
+  }
+
+  if (!cachedSharedSettings.foldersPosition) {
+    cachedSharedSettings.foldersPosition = FOLDERS_POSITION_DEFAULT;
   }
 
   if (!cached.appConfig) {
     cached.appConfig = initialState.appConfig;
   }
 
+  if (cached.appConfig.webAppAllowedProtocols === undefined) {
+    cached.appConfig.webAppAllowedProtocols = initialState.appConfig.webAppAllowedProtocols;
+  }
+
   if (untypedCached.sharedState?.settings?.shouldWarnAboutSvg) {
     cached.sharedState.settings.shouldWarnAboutFiles = true;
     untypedCached.sharedState.settings.shouldWarnAboutSvg = undefined;
+  }
+
+  if (cached.cacheVersion < 3) {
+    cached.cacheVersion = 3;
+    cached.messages = initialState.messages;
+    cached.chats.listIds = initialState.chats.listIds;
+  }
+
+  if (!cached.auth) {
+    cached.auth = initialState.auth;
+    cached.auth.rememberMe = untypedCached.rememberMe;
+  }
+
+  if (cached.audioPlayer.volume === undefined) {
+    cached.audioPlayer.volume = initialState.audioPlayer.volume;
   }
 }
 
 function updateCache(force?: boolean) {
   const global = getGlobal();
-  if (isRemovingCache || !isCaching || global.isLoggingOut || (!force && getIsHeavyAnimating())) {
+  if (isRemovingCache || !isCaching || global.auth.isLoggingOut || (!force && getIsHeavyAnimating())) {
     return;
   }
 
   forceUpdateCache();
 }
 
+export function temporarilySuspendCacheUpdate() {
+  cacheUpdateSuspensionTimestamp = Date.now() + UPDATE_THROTTLE;
+}
+
 export function forceUpdateCache(noEncrypt = false) {
+  if (Date.now() < cacheUpdateSuspensionTimestamp) {
+    return;
+  }
+
   const global = getGlobal();
   const { hasPasscode, isScreenLocked } = global.passcode;
 
@@ -398,12 +436,10 @@ function reduceGlobal<T extends GlobalState>(global: T) {
   const reducedGlobal: GlobalState = {
     ...INITIAL_GLOBAL_STATE,
     ...pick(global, [
+      'cacheVersion',
       'appConfig',
       'config',
-      'authState',
-      'authPhoneNumber',
-      'authRememberMe',
-      'authNearestCountry',
+      'auth',
       'attachMenu',
       'currentUserId',
       'contactList',
@@ -428,6 +464,7 @@ function reduceGlobal<T extends GlobalState>(global: T) {
       'availableEffectById',
     ]),
     lastIsChatInfoShown: !getIsMobile() ? global.lastIsChatInfoShown : undefined,
+    stickers: reduceStickers(global),
     customEmojis: reduceCustomEmojis(global),
     users: reduceUsers(global),
     chats: reduceChats(global),
@@ -471,9 +508,24 @@ export function serializeGlobal<T extends GlobalState>(global: T) {
   return JSON.stringify(reduceGlobal(global));
 }
 
+function reduceStickers<T extends GlobalState>(global: T): GlobalState['stickers'] {
+  const { diceSetIdByEmoji, setsById } = global.stickers;
+  return {
+    ...INITIAL_GLOBAL_STATE.stickers,
+    diceSetIdByEmoji,
+    setsById: pickTruthy(setsById, Object.values(diceSetIdByEmoji || {})),
+  };
+}
+
 function reduceCustomEmojis<T extends GlobalState>(global: T): GlobalState['customEmojis'] {
   const { lastRendered, byId } = global.customEmojis;
-  const idsToSave = lastRendered.slice(0, GLOBAL_STATE_CACHE_CUSTOM_EMOJI_LIMIT);
+  const folderEmojiIds = Object.values(global.chatFolders.byId)
+    .flatMap((folder) => (
+      folder.title.entities
+        ?.filter((entity) => entity.type === ApiMessageEntityTypes.CustomEmoji)
+        ?.map((entity) => entity.documentId) || []
+    ));
+  const idsToSave = unique([...folderEmojiIds, ...lastRendered]).slice(0, GLOBAL_STATE_CACHE_CUSTOM_EMOJI_LIMIT);
   const byIdToSave = pick(byId, idsToSave);
 
   return {
@@ -588,12 +640,12 @@ function reduceChats<T extends GlobalState>(global: T): GlobalState['chats'] {
     similarChannelsById: {},
     similarBotsById: {},
     isFullyLoaded: {},
-    notifyExceptionById: pickTruthy(global.chats.notifyExceptionById, unlinkedIdsToSave),
+    notifyExceptionById: pickTruthy(global.chats.notifyExceptionById, idsToSave),
     loadingParameters: INITIAL_GLOBAL_STATE.chats.loadingParameters,
-    byId: pickTruthy(global.chats.byId, unlinkedIdsToSave),
-    fullInfoById: pickTruthy(global.chats.fullInfoById, unlinkedIdsToSave),
+    byId: pickTruthy(global.chats.byId, idsToSave),
+    fullInfoById: pickTruthy(global.chats.fullInfoById, idsToSave),
     lastMessageIds: {
-      all: pickTruthy(global.chats.lastMessageIds.all || {}, unlinkedIdsToSave),
+      all: pickTruthy(global.chats.lastMessageIds.all || {}, idsToSave),
       saved: global.chats.lastMessageIds.saved,
     },
     topicsInfoById: pickTruthy(global.chats.topicsInfoById, currentChatIds),
@@ -642,18 +694,20 @@ function reduceMessages<T extends GlobalState>(global: T): GlobalState['messages
 
     const chatLastMessageId = selectChatLastMessageId(global, chatId);
 
+    const topicsInfo = selectTopicsInfo(global, chatId);
     const openedThreadIds = Array.from(openedChatThreadIds[chatId] || []);
     const commentThreadIds = Object.values(global.messages.byChatId[chatId].threadsById || {})
       .map(({ threadInfo }) => (threadInfo?.isCommentsInfo ? threadInfo?.originMessageId : undefined))
       .filter(Boolean);
-    const threadIds = unique(openedThreadIds.concat(commentThreadIds));
+    const threadIds = unique(openedThreadIds.concat(commentThreadIds, topicsInfo?.listedTopicIds || []));
 
+    const topics = selectTopics(global, chatId);
     const threadsToSave = pickTruthy(current.threadsById, [MAIN_THREAD_ID, ...threadIds]);
 
-    const viewportIdsToSave = unique(Object.values(threadsToSave).flatMap((thread) => thread.lastViewportIds || []));
-    const topics = selectTopics(global, chatId);
+    const viewportIdsToSave = unique(Object.values(threadsToSave)
+      .flatMap((thread) => thread.localState?.lastViewportIds || []));
     const topicLastMessageIds = topics && forumPanelChatIds.includes(chatId)
-      ? Object.values(topics).map(({ lastMessageId }) => lastMessageId) : [];
+      ? Object.values(topics).map(({ id }) => selectThreadInfo(global, chatId, id)?.lastMessageId).filter(Boolean) : [];
     const savedLastMessageIds = chatId === currentUserId && global.chats.lastMessageIds.saved
       ? Object.values(global.chats.lastMessageIds.saved) : [];
     const lastMessageIdsToSave = [chatLastMessageId].concat(topicLastMessageIds).concat(savedLastMessageIds)
@@ -663,9 +717,11 @@ function reduceMessages<T extends GlobalState>(global: T): GlobalState['messages
       const thread = threadsToSave[Number(key)];
       acc[Number(key)] = {
         ...thread,
-        listedIds: thread.lastViewportIds,
-        pinnedIds: undefined,
-        typingStatus: undefined,
+        localState: {
+          ...thread.localState,
+          listedIds: thread.localState?.lastViewportIds,
+          typingStatusByPeerId: undefined,
+        },
       };
       return acc;
     }, {} as GlobalState['messages']['byChatId'][string]['threadsById']);
@@ -691,6 +747,7 @@ function reduceMessages<T extends GlobalState>(global: T): GlobalState['messages
     byChatId[chatId] = {
       byId: cleanedById,
       threadsById,
+      summaryById: {},
     };
   });
 
@@ -785,5 +842,5 @@ function reduceGroupCalls<T extends GlobalState>(global: T): GlobalState['groupC
 
 function reduceAvailableReactions(availableReactions?: ApiAvailableReaction[]): ApiAvailableReaction[] | undefined {
   return availableReactions
-    ?.map((r) => pick(r, ['reaction', 'staticIcon', 'title', 'isInactive']));
+    ?.map((r) => ({ ...pick(r, ['reaction', 'staticIcon', 'title', 'isInactive']), isLocalCache: true }));
 }

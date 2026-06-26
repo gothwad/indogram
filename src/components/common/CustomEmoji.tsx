@@ -1,9 +1,9 @@
-import type { ElementRef, FC } from '../../lib/teact/teact';
+import type { ElementRef } from '../../lib/teact/teact';
 import { memo, useRef, useState } from '../../lib/teact/teact';
 import { getGlobal } from '../../global';
 
 import type { ObserveFn } from '../../hooks/useIntersectionObserver';
-import { ApiMessageEntityTypes } from '../../api/types';
+import { ApiMessageEntityTypes, type ApiSticker } from '../../api/types';
 
 import { selectIsAlwaysHighPriorityEmoji } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
@@ -21,7 +21,6 @@ import blankImg from '../../assets/blank.png';
 
 type OwnProps = {
   ref?: ElementRef<HTMLDivElement>;
-  documentId: string;
   className?: string;
   style?: string;
   size?: number;
@@ -29,6 +28,7 @@ type OwnProps = {
   noPlay?: boolean;
   noVideoOnMobile?: boolean;
   loopLimit?: number;
+  shouldNotLoop?: boolean;
   isSelectable?: boolean;
   withSharedAnimation?: boolean;
   sharedCanvasRef?: ElementRef<HTMLCanvasElement>;
@@ -41,13 +41,20 @@ type OwnProps = {
   observeIntersectionForPlaying?: ObserveFn;
   onClick?: NoneToVoidFunction;
   onAnimationEnd?: NoneToVoidFunction;
-};
+} & ({
+  documentId: string;
+  sticker?: undefined;
+} | {
+  sticker: ApiSticker;
+  documentId?: undefined;
+});
 
 const STICKER_SIZE = 20;
 
-const CustomEmoji: FC<OwnProps> = ({
+const CustomEmoji = ({
   ref,
   documentId,
+  sticker,
   className,
   style,
   size = STICKER_SIZE,
@@ -55,6 +62,7 @@ const CustomEmoji: FC<OwnProps> = ({
   noPlay,
   noVideoOnMobile,
   loopLimit,
+  shouldNotLoop,
   isSelectable,
   withSharedAnimation,
   sharedCanvasRef,
@@ -67,14 +75,15 @@ const CustomEmoji: FC<OwnProps> = ({
   observeIntersectionForPlaying,
   onClick,
   onAnimationEnd,
-}) => {
+}: OwnProps) => {
   let containerRef = useRef<HTMLDivElement>();
   if (ref) {
     containerRef = ref;
   }
 
   // An alternative to `withGlobal` to avoid adding numerous global containers
-  const { customEmoji, canPlay } = useCustomEmoji(documentId);
+  const { customEmoji: customEmojiFromDocumentId, canPlay } = useCustomEmoji(documentId);
+  const customEmoji = customEmojiFromDocumentId || sticker;
 
   const loopCountRef = useRef(0);
   const [shouldPlay, setShouldPlay] = useState(true);
@@ -146,7 +155,7 @@ const CustomEmoji: FC<OwnProps> = ({
           noVideoOnMobile={noVideoOnMobile}
           thumbClassName={styles.thumb}
           fullMediaClassName={styles.media}
-          shouldLoop
+          shouldLoop={!shouldNotLoop}
           loopLimit={loopLimit}
           shouldPreloadPreview={shouldPreloadPreview || noPlay || !canPlay}
           forceOnHeavyAnimation={forceOnHeavyAnimation}

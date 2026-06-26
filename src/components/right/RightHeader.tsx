@@ -40,7 +40,6 @@ import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 import useOldLang from '../../hooks/useOldLang';
 
-import Icon from '../common/icons/Icon';
 import Button from '../ui/Button';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import DropdownMenu from '../ui/DropdownMenu';
@@ -68,6 +67,7 @@ type OwnProps = {
   isCreatingTopic?: boolean;
   isEditingTopic?: boolean;
   isAddingChatMembers?: boolean;
+  headerBackground?: 'regular' | 'secondary';
   profileState?: ProfileState;
   managementScreen?: ManagementScreens;
   onClose: (shouldScrollUp?: boolean) => void;
@@ -159,6 +159,7 @@ const RightHeader: FC<OwnProps & StateProps> = ({
   isCreatingTopic,
   isEditingTopic,
   isAddingChatMembers,
+  headerBackground,
   profileState,
   managementScreen,
   canAddContact,
@@ -267,6 +268,8 @@ const RightHeader: FC<OwnProps & StateProps> = ({
 
   const oldLang = useOldLang();
   const lang = useLang();
+
+  const isSecondaryBackground = headerBackground === 'secondary';
   const contentKey = isProfile ? (
     profileState === ProfileState.Profile ? (
       HeaderContent.Profile
@@ -385,11 +388,30 @@ const RightHeader: FC<OwnProps & StateProps> = ({
         className={isOpen ? 'active' : ''}
         onClick={onTrigger}
         ariaLabel={lang('AriaLabelOpenMenu')}
-      >
-        <Icon name="more" />
-      </Button>
+        iconName="more"
+      />
     );
   }, [isMobile, lang]);
+
+  const primaryEditButton = canEditTopic ? (
+    <Button
+      round
+      color="translucent"
+      size="smaller"
+      ariaLabel={oldLang('EditTopic')}
+      onClick={toggleEditTopic}
+      iconName="edit"
+    />
+  ) : (canManage || canEditBot) ? (
+    <Button
+      round
+      color="translucent"
+      size="smaller"
+      ariaLabel={oldLang('Edit')}
+      onClick={handleToggleManagement}
+      iconName="edit"
+    />
+  ) : undefined;
 
   function renderHeaderContent() {
     if (renderingContentKey === -1) {
@@ -441,9 +463,8 @@ const RightHeader: FC<OwnProps & StateProps> = ({
                   size="smaller"
                   ariaLabel={oldLang('Edit')}
                   onClick={handleEditInviteClick}
-                >
-                  <Icon name="edit" />
-                </Button>
+                  iconName="edit"
+                />
               )}
               {currentInviteInfo && currentInviteInfo.isRevoked && (
                 <>
@@ -453,9 +474,8 @@ const RightHeader: FC<OwnProps & StateProps> = ({
                     size="smaller"
                     ariaLabel={oldLang('Delete')}
                     onClick={openDeleteDialog}
-                  >
-                    <Icon name="delete" />
-                  </Button>
+                    iconName="delete"
+                  />
                   <ConfirmDialog
                     isOpen={isDeleteDialogOpen}
                     onClose={closeDeleteDialog}
@@ -636,43 +656,10 @@ const RightHeader: FC<OwnProps & StateProps> = ({
                   size="smaller"
                   ariaLabel={oldLang('AddContact')}
                   onClick={handleAddContact}
-                >
-                  <Icon name="add-user" />
-                </Button>
+                  iconName="add-user"
+                />
               )}
-              {canManage && !isInsideTopic && (
-                <Button
-                  round
-                  color="translucent"
-                  size="smaller"
-                  ariaLabel={oldLang('Edit')}
-                  onClick={handleToggleManagement}
-                >
-                  <Icon name="edit" />
-                </Button>
-              )}
-              {canEditBot && (
-                <Button
-                  round
-                  color="translucent"
-                  size="smaller"
-                  ariaLabel={oldLang('Edit')}
-                  onClick={handleToggleManagement}
-                >
-                  <Icon name="edit" />
-                </Button>
-              )}
-              {canEditTopic && (
-                <Button
-                  round
-                  color="translucent"
-                  size="smaller"
-                  ariaLabel={oldLang('EditTopic')}
-                  onClick={toggleEditTopic}
-                >
-                  <Icon name="edit" />
-                </Button>
-              )}
+              {primaryEditButton}
               {canViewStatistics && (
                 <Button
                   round
@@ -680,9 +667,8 @@ const RightHeader: FC<OwnProps & StateProps> = ({
                   size="smaller"
                   ariaLabel={oldLang('Statistics')}
                   onClick={handleToggleStatistics}
-                >
-                  <Icon name="stats" />
-                </Button>
+                  iconName="stats"
+                />
               )}
               {isOwnProfile && (
                 <Button
@@ -691,9 +677,8 @@ const RightHeader: FC<OwnProps & StateProps> = ({
                   size="smaller"
                   ariaLabel={lang('Edit')}
                   onClick={handleEditProfile}
-                >
-                  <Icon name="edit" />
-                </Button>
+                  iconName="edit"
+                />
               )}
             </section>
           </>
@@ -722,7 +707,7 @@ const RightHeader: FC<OwnProps & StateProps> = ({
 
   return (
     <div
-      className="RightHeader"
+      className={buildClassName('RightHeader', isSecondaryBackground && 'secondary')}
       data-tauri-drag-region={IS_TAURI && IS_MAC_OS ? true : undefined}
       style={createVtnStyle('rightHeader', true)}
     >

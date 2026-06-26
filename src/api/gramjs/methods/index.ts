@@ -1,10 +1,12 @@
 export {
   destroy, disconnect, downloadMedia, fetchCurrentUser, repairFileReference, abortChatRequests, abortRequestGroup,
   setForceHttpTransport, setShouldDebugExportedSenders, setAllowHttpTransport, requestChannelDifference,
+  setOpenedChannelIds,
 } from './client';
 
 export {
   provideAuthPhoneNumber, provideAuthCode, provideAuthPassword, provideAuthRegistration, restartAuth, restartAuthWithQr,
+  restartAuthWithPasskey,
 } from './auth';
 
 export {
@@ -46,3 +48,5 @@ export * from './fragment';
 export * from './stars';
 
 export * from './forum';
+
+export * from './misc';

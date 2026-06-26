@@ -33,7 +33,7 @@ import {
 import { IS_SAFARI } from '../../util/browser/windowEnvironment';
 import buildClassName from '../../util/buildClassName';
 import captureKeyboardListeners from '../../util/captureKeyboardListeners';
-import { formatMediaDuration, formatRelativePastTime } from '../../util/dates/dateFormat';
+import { formatMediaDuration, formatRelativePastTime } from '../../util/dates/oldDateFormat';
 import download from '../../util/download';
 import { isUserId } from '../../util/entities/ids';
 import { formatStarsAsIcon } from '../../util/localization/format';
@@ -572,9 +572,8 @@ function Story({
           onClick={onTrigger}
           className={buildClassName(styles.button, isOpen && 'active')}
           ariaLabel={lang('AriaLabelOpenMenu')}
-        >
-          <Icon name="more" />
-        </Button>
+          iconName="more"
+        />
       );
     };
   }, [isMobile, lang]);
@@ -716,9 +715,8 @@ function Story({
               disabled={!hasFullData}
               onClick={handleVolumeMuted}
               ariaLabel={oldLang('Volume')}
-            >
-              <Icon name={(isMuted || noSound) ? 'speaker-muted-story' : 'speaker-story'} />
-            </Button>
+              iconName={(isMuted || noSound) ? 'speaker-muted-story' : 'speaker-story'}
+            />
           )}
           <DropdownMenu
             className={styles.buttonMenu}
@@ -766,9 +764,8 @@ function Story({
             color="translucent-white"
             ariaLabel={oldLang('Close')}
             onClick={onClose}
-          >
-            <Icon name="close" />
-          </Button>
+            iconName="close"
+          />
         </div>
       </div>
     );
@@ -811,7 +808,7 @@ function Story({
           />
         )}
         {shouldRenderSkeleton && (
-          <Skeleton className={buildClassName(skeletonTransitionClassNames, styles.fullSize)} />
+          <Skeleton className={buildClassName(skeletonTransitionClassNames, styles.fullSize)} animation="pulse" />
         )}
         {!isVideo && fullMediaData && (
           <img

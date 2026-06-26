@@ -18,7 +18,6 @@ import {
   FRAGMENT_PHONE_CODE, FRAGMENT_PHONE_LENGTH, MUTE_INDEFINITE_TIMESTAMP, UNMUTE_TIMESTAMP,
 } from '../../../config';
 import {
-  buildStaticMapHash,
   getChatLink,
   getHasAdminRight,
   isChatAdmin,
@@ -26,6 +25,7 @@ import {
   isUserRightBanned,
 } from '../../../global/helpers';
 import { getIsChatMuted } from '../../../global/helpers/notifications';
+import { getPeerTitle } from '../../../global/helpers/peers';
 import {
   selectBotAppPermissions,
   selectChat,
@@ -38,6 +38,7 @@ import {
   selectUser,
   selectUserFullInfo,
 } from '../../../global/selectors';
+import { VTT_PROFILE_NOTE_COLLAPSE, VTT_PROFILE_NOTE_EXPAND } from '../../../util/animations/viewTransitionTypes';
 import buildClassName from '../../../util/buildClassName';
 import { copyTextToClipboard } from '../../../util/clipboard';
 import { formatPhoneNumberWithCode } from '../../../util/phoneNumber';
@@ -48,19 +49,20 @@ import formatUsername from '../helpers/formatUsername';
 import renderText from '../helpers/renderText';
 import { renderTextWithEntities } from '../helpers/renderTextWithEntities';
 
+import { useViewTransition } from '../../../hooks/animations/useViewTransition';
+import { useVtn } from '../../../hooks/animations/useVtn';
 import useCollapsibleLines from '../../../hooks/element/useCollapsibleLines';
 import useEffectWithPrevDeps from '../../../hooks/useEffectWithPrevDeps';
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
-import useMedia from '../../../hooks/useMedia';
 import useOldLang from '../../../hooks/useOldLang';
-import useDevicePixelRatio from '../../../hooks/window/useDevicePixelRatio';
 
+import Island from '../../gili/layout/Island';
+import Switch from '../../gili/primitives/Switch';
 import Chat from '../../left/main/Chat';
 import Button from '../../ui/Button';
 import ListItem from '../../ui/ListItem';
-import Skeleton from '../../ui/placeholder/Skeleton';
-import Switcher from '../../ui/Switcher';
+import CompactMapPreview from '../CompactMapPreview';
 import CustomEmoji from '../CustomEmoji';
 import Icon from '../icons/Icon';
 import SafeLink from '../SafeLink';
@@ -74,6 +76,7 @@ type OwnProps = {
   isOwnProfile?: boolean;
   isSavedDialog?: boolean;
   isInSettings?: boolean;
+  withIslands?: boolean;
   className?: string;
   style?: string;
 };
@@ -105,7 +108,7 @@ const DEFAULT_MAP_CONFIG = {
 };
 
 const BOT_VERIFICATION_ICON_SIZE = 16;
-const MAX_LINES = 3;
+const NOTE_MAX_LINES = 3;
 
 const ChatExtra = ({
   chatOrUserId,
@@ -129,6 +132,7 @@ const ChatExtra = ({
   className,
   style,
   isInSettings,
+  withIslands,
   canViewSubscribers,
 }: OwnProps & StateProps) => {
   const {
@@ -163,6 +167,9 @@ const ChatExtra = ({
   const oldLang = useOldLang();
   const lang = useLang();
 
+  const { startViewTransition } = useViewTransition();
+  const { createVtnStyle } = useVtn();
+
   const noteTextRef = useRef<HTMLDivElement>();
 
   const shouldRenderNote = Boolean(note);
@@ -173,7 +180,7 @@ const ChatExtra = ({
     setIsCollapsed: setIsNoteCollapsed,
   } = useCollapsibleLines(
     noteTextRef,
-    MAX_LINES,
+    NOTE_MAX_LINES,
     undefined,
     !shouldRenderNote,
   );
@@ -186,19 +193,18 @@ const ChatExtra = ({
   }, [peerId, chat, user]);
 
   const { width, height, zoom } = DEFAULT_MAP_CONFIG;
-  const dpr = useDevicePixelRatio();
-  const locationMediaHash = businessLocation?.geo
-    && buildStaticMapHash(businessLocation.geo, width, height, zoom, dpr);
-  const locationBlobUrl = useMedia(locationMediaHash);
-
   const locationRightComponent = useMemo(() => {
     if (!businessLocation?.geo) return undefined;
-    if (locationBlobUrl) {
-      return <img src={locationBlobUrl} alt="" className={styles.businessLocation} />;
-    }
-
-    return <Skeleton className={styles.businessLocation} />;
-  }, [businessLocation, locationBlobUrl]);
+    return (
+      <CompactMapPreview
+        className={styles.businessLocation}
+        geo={businessLocation.geo}
+        width={width}
+        height={height}
+        zoom={zoom}
+      />
+    );
+  }, [businessLocation, width, height, zoom]);
 
   const isTopicInfo = Boolean(topicId && topicId !== MAIN_THREAD_ID);
   const shouldRenderAllLinks = (chat && isChatChannel(chat)) || user?.isPremium;
@@ -264,11 +270,16 @@ const ChatExtra = ({
   const canExpandNote = isNoteCollapsible && isNoteCollapsed;
 
   const handleExpandNote = useLastCallback(() => {
-    setIsNoteCollapsed(false);
+    startViewTransition(VTT_PROFILE_NOTE_EXPAND, () => {
+      setIsNoteCollapsed(false);
+    });
   });
 
   const handleToggleNote = useLastCallback(() => {
-    setIsNoteCollapsed((prev) => !prev);
+    const isCollapsed = isNoteCollapsed;
+    startViewTransition(isCollapsed ? VTT_PROFILE_NOTE_EXPAND : VTT_PROFILE_NOTE_COLLAPSE, () => {
+      setIsNoteCollapsed(() => !isCollapsed);
+    });
   });
 
   function copy(text: string, entity: string) {
@@ -381,198 +392,262 @@ const ChatExtra = ({
     );
   }
 
+  const Wrapper = withIslands ? Island : 'div';
+
   return (
-    <div className={buildClassName('ChatExtra', className)} style={style}>
+    <div className={buildClassName('ChatExtra', className)} style={style || createVtnStyle('chatExtra')}>
+      {user && userFullInfo?.isUnofficialSecurityRisk && (
+        <Wrapper className={withIslands ? styles.securityRiskIsland : undefined}>
+          <div className={styles.unofficialSecurityRisk}>
+            <Icon className={buildClassName(styles.riskIcon, 'in-text-icon')} name="info-filled" />
+            {lang('UnofficialSecurityRisk', { peer: getPeerTitle(lang, user) })}
+          </div>
+        </Wrapper>
+      )}
       {personalChannel && (
-        <div className={styles.personalChannel}>
+        <div className={styles.personalChannel} style={createVtnStyle('personalChannel')}>
           <h3 className={styles.personalChannelTitle}>{oldLang('ProfileChannel')}</h3>
           <span className={styles.personalChannelSubscribers}>
             {oldLang('Subscribers', personalChannel.membersCount, 'i')}
           </span>
-          <Chat
-            chatId={personalChannel.id}
-            orderDiff={0}
-            animationType={ChatAnimationTypes.None}
-            isPreview
-            previewMessageId={personalChannelMessageId}
-            className={styles.personalChannelItem}
-          />
+          <Wrapper className={styles.personalChannelItem}>
+            <Chat
+              chatId={personalChannel.id}
+              orderDiff={0}
+              shiftDiff={0}
+              animationType={ChatAnimationTypes.None}
+              isPreview
+              previewMessageId={personalChannelMessageId}
+            />
+          </Wrapper>
         </div>
       )}
-      {Boolean(formattedNumber?.length) && (
-
-        <ListItem icon="phone" multiline narrow ripple onClick={handlePhoneClick}>
-          <span className="title" dir={lang.isRtl ? 'rtl' : undefined}>{formattedNumber}</span>
-          <span className="subtitle">{oldLang('Phone')}</span>
-        </ListItem>
-      )}
-      {activeUsernames && renderUsernames(activeUsernames)}
-      {description && Boolean(description.length) && (
-        <ListItem
-          icon="info"
-          multiline
-          narrow
-          isStatic
-          allowSelection
-        >
-          <span className="title word-break allow-selection" dir={lang.isRtl ? 'rtl' : undefined}>
-            {
-              renderText(description, [
-                'br',
-                shouldRenderAllLinks ? 'links' : 'tg_links',
-                'emoji',
-              ])
-            }
-          </span>
-          <span className="subtitle">{oldLang(userId ? 'UserBio' : 'Info')}</span>
-        </ListItem>
-      )}
-      {activeChatUsernames && !isTopicInfo && renderUsernames(activeChatUsernames, true)}
-      {((!activeChatUsernames && canInviteUsers) || isTopicInfo) && link && (
-        <ListItem
-          icon="link"
-          multiline
-          narrow
-          ripple
-
-          onClick={() => copy(link, oldLang('SetUrlPlaceholder'))}
-        >
-          <div className="title">{link}</div>
-          <span className="subtitle">{oldLang('SetUrlPlaceholder')}</span>
-        </ListItem>
-      )}
-      {birthday && (
-        <UserBirthday key={peerId} birthday={birthday} user={user!} isInSettings={isInSettings} />
-      )}
-      {hasMainMiniApp && (
-        <ListItem
-          multiline
-          isStatic
-          narrow
-        >
-          <Button
-            className={styles.openAppButton}
-            onClick={handleOpenApp}
+      <Wrapper>
+        {Boolean(formattedNumber?.length) && (
+          <ListItem
+            icon="phone"
+            className={styles.phone}
+            multiline
+            narrow
+            ripple
+            onClick={handlePhoneClick}
+            style={createVtnStyle('phone')}
           >
-            {oldLang('ProfileBotOpenApp')}
-          </Button>
-          <div className={styles.sectionInfo}>
-            {appTermsInfo}
-          </div>
-        </ListItem>
-      )}
-      {!isOwnProfile && !isInSettings && (
-        <ListItem icon={isMuted ? 'mute' : 'unmute'} narrow ripple onClick={handleToggleNotifications}>
-          <span>{lang('Notifications')}</span>
-          <Switcher
-            id="group-notifications"
-            label={lang(userId ? 'AriaToggleUserNotifications' : 'AriaToggleChatNotifications')}
-            checked={!isMuted}
-            inactive
-          />
-        </ListItem>
-      )}
-      {businessWorkHours && (
-        <BusinessHours businessHours={businessWorkHours} />
-      )}
-      {businessLocation && (
-        <ListItem
-          icon="location"
-          ripple
-          multiline
-          narrow
-          rightElement={locationRightComponent}
-          onClick={handleClickLocation}
-        >
-          <div className="title">{businessLocation.address}</div>
-          <span className="subtitle">{oldLang('BusinessProfileLocation')}</span>
-        </ListItem>
-      )}
-      {shouldRenderNote && (
-        <ListItem
-          icon="note"
-          iconClassName={styles.noteListItemIcon}
-          multiline
-          narrow
-          isStatic
-          allowSelection
-        >
-          <div
-            ref={noteTextRef}
-            className={buildClassName(
-              'title',
-              'word-break',
-              'allow-selection',
-              styles.noteText,
-              isNoteCollapsed && styles.noteTextCollapsed,
-            )}
-            dir={lang.isRtl ? 'rtl' : undefined}
-            onClick={canExpandNote ? handleExpandNote : undefined}
+            <span className="title" dir={lang.isRtl ? 'rtl' : undefined}>{formattedNumber}</span>
+            <span className="subtitle">{oldLang('Phone')}</span>
+          </ListItem>
+        )}
+        {activeUsernames && renderUsernames(activeUsernames)}
+        {description && Boolean(description.length) && (
+          <ListItem
+            icon="info"
+            className={styles.description}
+            multiline
+            narrow
+            isStatic
+            allowSelection
+            style={createVtnStyle('description')}
           >
-            {renderTextWithEntities({
-              text: note.text,
-              entities: note.entities,
-            })}
-          </div>
-          <div className={buildClassName('subtitle', styles.noteSubtitle)}>
-            <span>{lang('UserNoteTitle')}</span>
+            <span className="title word-break allow-selection" dir={lang.isRtl ? 'rtl' : undefined}>
+              {
+                renderText(description, [
+                  'br',
+                  shouldRenderAllLinks ? 'links' : 'tg_links',
+                  'emoji',
+                ])
+              }
+            </span>
+            <span className="subtitle">{oldLang(userId ? 'UserBio' : 'Info')}</span>
+          </ListItem>
+        )}
+        {activeChatUsernames && !isTopicInfo && renderUsernames(activeChatUsernames, true)}
+        {((!activeChatUsernames && canInviteUsers) || isTopicInfo) && link && (
+          <ListItem
+            icon="link"
+            multiline
+            className={styles.link}
+            narrow
+            ripple
+            onClick={() => copy(link, oldLang('SetUrlPlaceholder'))}
+            style={createVtnStyle('link')}
+          >
+            <div className="title">{link}</div>
+            <span className="subtitle">{oldLang('SetUrlPlaceholder')}</span>
+          </ListItem>
+        )}
+        {birthday && (
+          <UserBirthday key={peerId} birthday={birthday} user={user!} isInSettings={isInSettings} />
+        )}
+        {hasMainMiniApp && (
+          <ListItem
+            multiline
+            className={styles.miniapp}
+            isStatic
+            narrow
+            style={createVtnStyle('miniapp')}
+          >
+            <Button
+              className={styles.openAppButton}
+              onClick={handleOpenApp}
+            >
+              {oldLang('ProfileBotOpenApp')}
+            </Button>
+            <div className={styles.sectionInfo}>
+              {appTermsInfo}
+            </div>
+          </ListItem>
+        )}
+        {!isOwnProfile && !isInSettings && (
+          <ListItem
+            icon={isMuted ? 'mute' : 'unmute'}
+            className={styles.notifications}
+            narrow
+            ripple
+            onClick={handleToggleNotifications}
+            style={createVtnStyle('notifications')}
+          >
+            <span>{lang('Notifications')}</span>
+            <Switch
+              id="group-notifications"
+              checked={!isMuted}
+              className={styles.switch}
+            />
+          </ListItem>
+        )}
+        {businessWorkHours && (
+          <BusinessHours businessHours={businessWorkHours} />
+        )}
+        {businessLocation && (
+          <ListItem
+            icon="location"
+            ripple
+            multiline
+            narrow
+            className={styles.location}
+            style={createVtnStyle('location')}
+            rightElement={locationRightComponent}
+            onClick={handleClickLocation}
+          >
+            <div className="title">{businessLocation.address}</div>
+            <span className="subtitle">{oldLang('BusinessProfileLocation')}</span>
+          </ListItem>
+        )}
+        {shouldRenderNote && (
+          <ListItem
+            icon="note"
+            iconClassName={styles.noteListItemIcon}
+            multiline
+            narrow
+            isStatic
+            allowSelection
+            className={styles.note}
+            style={createVtnStyle('note')}
+          >
+            <div
+              ref={noteTextRef}
+              className={buildClassName(
+                'title',
+                'word-break',
+                'allow-selection',
+                styles.noteText,
+                isNoteCollapsed && styles.noteTextCollapsed,
+              )}
+              style={createVtnStyle('noteText', true)}
+              dir={lang.isRtl ? 'rtl' : undefined}
+              onClick={canExpandNote ? handleExpandNote : undefined}
+            >
+              {renderTextWithEntities({
+                text: note.text,
+                entities: note.entities,
+              })}
+            </div>
+            <div className={buildClassName('subtitle', styles.noteSubtitle)} style={createVtnStyle('noteSubtitle')}>
+              <span>{lang('UserNoteTitle')}</span>
 
-            <span className={styles.noteHint}>{lang('UserNoteHint')}</span>
-            {isNoteCollapsible && (
-              <Icon
-                className={buildClassName(
-                  styles.noteCollapseIcon,
-                  styles.clickable,
-                  !isNoteCollapsed && styles.expandedIcon,
-                )}
-                onClick={handleToggleNote}
-                name="down"
-              />
-            )}
+              <span className={styles.noteHint}>{lang('UserNoteHint')}</span>
+              {isNoteCollapsible && (
+                <Icon
+                  className={buildClassName(
+                    styles.noteExpandIcon,
+                    styles.clickable,
+                  )}
+                  style={createVtnStyle('noteExpandIcon', true)}
+                  onClick={handleToggleNote}
+                  name={isNoteCollapsed ? 'down' : 'up'}
+                />
+              )}
+            </div>
+          </ListItem>
+        )}
+        {hasSavedMessages && !isOwnProfile && !isInSettings && (
+          <ListItem
+            icon="saved-messages"
+            className={styles.savedMessages}
+            narrow
+            ripple
+            onClick={handleOpenSavedDialog}
+            style={createVtnStyle('savedMessages')}
+          >
+            <span>{oldLang('SavedMessagesTab')}</span>
+          </ListItem>
+        )}
+        {userFullInfo && 'isBotAccessEmojiGranted' in userFullInfo && (
+          <ListItem
+            icon="user"
+            className={styles.botEmojiStatus}
+            narrow
+            ripple
+            onClick={manageEmojiStatusChange}
+            style={createVtnStyle('botEmojiStatus')}
+          >
+            <span>{oldLang('BotProfilePermissionEmojiStatus')}</span>
+            <Switch
+              checked={Boolean(isBotCanManageEmojiStatus)}
+              className={styles.switch}
+            />
+          </ListItem>
+        )}
+        {botAppPermissions?.geolocation !== undefined && (
+          <ListItem
+            icon="location"
+            className={styles.botLocation}
+            narrow
+            ripple
+            onClick={handleLocationPermissionChange}
+            style={createVtnStyle('botLocation')}
+          >
+            <span>{oldLang('BotProfilePermissionLocation')}</span>
+            <Switch
+              checked={Boolean(botAppPermissions?.geolocation)}
+              className={styles.switch}
+            />
+          </ListItem>
+        )}
+        {canViewSubscribers && (
+          <ListItem
+            icon="group"
+            narrow
+            multiline
+            ripple
+            className={styles.subscribers}
+            onClick={handleOpenSubscribers}
+            style={createVtnStyle('subscribers')}
+          >
+            <div className="title">{lang('ProfileItemSubscribers')}</div>
+            <span className="subtitle">{lang.number(chat?.membersCount || 0)}</span>
+          </ListItem>
+        )}
+        {botVerification && (
+          <div className={styles.botVerificationSection} style={createVtnStyle('botVerification')}>
+            <CustomEmoji
+              className={styles.botVerificationIcon}
+              documentId={botVerification.iconId}
+              size={BOT_VERIFICATION_ICON_SIZE}
+            />
+            {botVerification.description}
           </div>
-        </ListItem>
-      )}
-      {hasSavedMessages && !isOwnProfile && !isInSettings && (
-        <ListItem icon="saved-messages" narrow ripple onClick={handleOpenSavedDialog}>
-          <span>{oldLang('SavedMessagesTab')}</span>
-        </ListItem>
-      )}
-      {userFullInfo && 'isBotAccessEmojiGranted' in userFullInfo && (
-        <ListItem icon="user" narrow ripple onClick={manageEmojiStatusChange}>
-          <span>{oldLang('BotProfilePermissionEmojiStatus')}</span>
-          <Switcher
-            label={oldLang('BotProfilePermissionEmojiStatus')}
-            checked={isBotCanManageEmojiStatus}
-            inactive
-          />
-        </ListItem>
-      )}
-      {botAppPermissions?.geolocation !== undefined && (
-        <ListItem icon="location" narrow ripple onClick={handleLocationPermissionChange}>
-          <span>{oldLang('BotProfilePermissionLocation')}</span>
-          <Switcher
-            label={oldLang('BotProfilePermissionLocation')}
-            checked={botAppPermissions?.geolocation}
-            inactive
-          />
-        </ListItem>
-      )}
-      {canViewSubscribers && (
-        <ListItem icon="group" narrow multiline ripple onClick={handleOpenSubscribers}>
-          <div className="title">{lang('ProfileItemSubscribers')}</div>
-          <span className="subtitle">{lang.number(chat?.membersCount || 0)}</span>
-        </ListItem>
-      )}
-      {botVerification && (
-        <div className={styles.botVerificationSection}>
-          <CustomEmoji
-            className={styles.botVerificationIcon}
-            documentId={botVerification.iconId}
-            size={BOT_VERIFICATION_ICON_SIZE}
-          />
-          {botVerification.description}
-        </div>
-      )}
+        )}
+      </Wrapper>
     </div>
   );
 };

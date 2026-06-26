@@ -4,7 +4,10 @@ import {
   useCallback, useMemo, useRef, useState,
 } from '../../lib/teact/teact';
 
-import Icon from '../common/icons/Icon';
+import type { IAnchorPosition } from '../../types';
+
+import useLastCallback from '../../hooks/useLastCallback';
+
 import Button from './Button';
 import Menu from './Menu';
 
@@ -20,6 +23,7 @@ type OwnProps = {
   positionY?: 'top' | 'bottom';
   footer?: string;
   forceOpen?: boolean;
+  withPortal?: boolean;
   onOpen?: NoneToVoidFunction;
   onClose?: NoneToVoidFunction;
   onHide?: NoneToVoidFunction;
@@ -40,6 +44,7 @@ const DropdownMenu: FC<OwnProps> = ({
   positionY = 'top',
   footer,
   forceOpen,
+  withPortal,
   onOpen,
   onClose,
   onTransitionEnd,
@@ -48,9 +53,16 @@ const DropdownMenu: FC<OwnProps> = ({
   autoClose = true,
 }) => {
   const menuRef = useRef<HTMLDivElement>();
+  const triggerRef = useRef<HTMLDivElement>();
   const [isOpen, setIsOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<IAnchorPosition | undefined>();
 
   const toggleIsOpen = () => {
+    if (!isOpen && withPortal && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuAnchor({ x: rect.left, y: rect.bottom });
+    }
+
     setIsOpen(!isOpen);
 
     if (isOpen) {
@@ -89,16 +101,23 @@ const DropdownMenu: FC<OwnProps> = ({
         size="smaller"
         color="translucent"
         className={isMenuOpen ? 'active' : ''}
+        iconName="more"
         onClick={onTrigger}
         ariaLabel="More actions"
-      >
-        <Icon name="more" />
-      </Button>
+      />
     );
   }, [trigger]);
 
+  const getTriggerElement = useLastCallback(() => triggerRef.current);
+  const getRootElement = useLastCallback(() => document.body);
+  const getMenuElement = useLastCallback(
+    () => menuRef.current?.querySelector('.bubble') as HTMLElement | undefined,
+  );
+  const getLayout = useLastCallback(() => ({ withPortal: true }));
+
   return (
     <div
+      ref={triggerRef}
       className={`DropdownMenu ${className || ''}`}
       onKeyDown={handleKeyDown}
       onTransitionEnd={onTransitionEnd}
@@ -116,9 +135,17 @@ const DropdownMenu: FC<OwnProps> = ({
         positionY={positionY}
         footer={footer}
         autoClose={autoClose}
+        withPortal={withPortal}
         onClose={handleClose}
         onCloseAnimationEnd={onHide}
         onMouseEnterBackdrop={onMouseEnterBackdrop}
+        {...(withPortal && menuAnchor ? {
+          anchor: menuAnchor,
+          getTriggerElement,
+          getRootElement,
+          getMenuElement,
+          getLayout,
+        } : undefined)}
       >
         {children}
       </Menu>

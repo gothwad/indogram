@@ -1,4 +1,4 @@
-import type { ElementRef, FC } from '../../../lib/teact/teact';
+import type { ElementRef } from '../../../lib/teact/teact';
 import {
   memo, useCallback, useEffect, useRef,
 } from '../../../lib/teact/teact';
@@ -7,8 +7,6 @@ import { getActions, withGlobal } from '../../../global';
 import type { ApiSticker } from '../../../api/types';
 
 import { selectIsContextMenuTranslucent } from '../../../global/selectors';
-
-import useFlag from '../../../hooks/useFlag';
 
 import CustomEmojiPicker from '../../common/CustomEmojiPicker';
 import Menu from '../../ui/Menu';
@@ -28,20 +26,20 @@ interface StateProps {
   isTranslucent?: boolean;
 }
 
-const StatusPickerMenu: FC<OwnProps & StateProps> = ({
+const StatusPickerMenu = ({
   isOpen,
   statusButtonRef,
   areFeaturedStickersLoaded,
   isTranslucent,
   onEmojiStatusSelect,
   onClose,
-}) => {
+}: OwnProps & StateProps) => {
   const { loadFeaturedEmojiStickers } = getActions();
 
-  const transformOriginX = useRef<number>();
-  const [isContextMenuShown, markContextMenuShown, unmarkContextMenuShown] = useFlag();
+  const transformOriginXRef = useRef<number>(0);
   useEffect(() => {
-    transformOriginX.current = statusButtonRef.current!.getBoundingClientRect().right;
+    if (!statusButtonRef.current) return;
+    transformOriginXRef.current = statusButtonRef.current.getBoundingClientRect().right;
   }, [isOpen, statusButtonRef]);
 
   useEffect(() => {
@@ -60,11 +58,10 @@ const StatusPickerMenu: FC<OwnProps & StateProps> = ({
       <Menu
         isOpen={isOpen}
         noCompact
-        positionX="right"
+        positionX="left"
         bubbleClassName={styles.menuContent}
         onClose={onClose}
-        transformOriginX={transformOriginX.current}
-        noCloseOnBackdrop={isContextMenuShown}
+        transformOriginX={transformOriginXRef.current}
       >
         <CustomEmojiPicker
           idPrefix="status-emoji-set-"
@@ -72,10 +69,8 @@ const StatusPickerMenu: FC<OwnProps & StateProps> = ({
           isHidden={!isOpen}
           isStatusPicker
           isTranslucent={isTranslucent}
-          onContextMenuOpen={markContextMenuShown}
-          onContextMenuClose={unmarkContextMenuShown}
+          onDismiss={onClose}
           onCustomEmojiSelect={handleEmojiSelect}
-          onContextMenuClick={onClose}
         />
       </Menu>
     </Portal>

@@ -5,13 +5,13 @@ import {
 import { withGlobal } from '../../../global';
 
 import type { ApiChat, ApiUser } from '../../../api/types';
-import type { GroupCallParticipant as TypeGroupCallParticipant } from '../../../lib/secret-sauce';
+import type { GroupCallParticipant as TypeGroupCallParticipant } from '../../../lib/vibecalls';
 import type { VideoLayout, VideoParticipant } from './hooks/useGroupCallVideoLayout';
 
 import { GROUP_CALL_DEFAULT_VOLUME } from '../../../config';
 import fastBlur from '../../../lib/fastBlur';
 import { requestMutation } from '../../../lib/fasterdom/fasterdom';
-import { getUserStreams, THRESHOLD } from '../../../lib/secret-sauce';
+import { getUserStreams, THRESHOLD } from '../../../lib/vibecalls';
 import { selectChat, selectUser } from '../../../global/selectors';
 import { animate } from '../../../util/animation';
 import { IS_CANVAS_FILTER_SUPPORTED } from '../../../util/browser/windowEnvironment';
@@ -25,7 +25,6 @@ import useLastCallback from '../../../hooks/useLastCallback';
 import useOldLang from '../../../hooks/useOldLang';
 
 import FullNameTitle from '../../common/FullNameTitle';
-import Icon from '../../common/icons/Icon';
 import Button from '../../ui/Button';
 import Skeleton from '../../ui/placeholder/Skeleton';
 import GroupCallParticipantMenu from './GroupCallParticipantMenu';
@@ -255,7 +254,7 @@ const GroupCallParticipantVideo: FC<OwnProps & StateProps> = ({
         )}
       >
         {isLoading && (
-          <Skeleton className={buildClassName(styles.video, styles.loader)} />
+          <Skeleton className={buildClassName(styles.video, styles.loader)} animation="wave" />
         )}
         {stream && (
           <video
@@ -287,9 +286,8 @@ const GroupCallParticipantVideo: FC<OwnProps & StateProps> = ({
             className={styles.pinButton}
             ariaLabel={lang(isPinned ? 'lng_group_call_context_unpin_camera' : 'lng_group_call_context_pin_camera')}
             onClick={handleClickPin}
-          >
-            <Icon name={isPinned ? 'unpin' : 'pin'} />
-          </Button>
+            iconName={isPinned ? 'unpin' : 'pin'}
+          />
         )}
         <div className={styles.bottomPanel}>
           <div className={styles.info}>

@@ -5,7 +5,7 @@ import { getActions, getGlobal, withGlobal } from '../../global';
 import type { TabState } from '../../global/types';
 import { ApiMediaFormat } from '../../api/types';
 
-import { TABS_POSITION_LEFT } from '../../config';
+import { FOLDERS_POSITION_LEFT } from '../../config';
 import { getChatAvatarHash } from '../../global/helpers/chats'; // Direct import for better module splitting
 import { selectAreFoldersPresent, selectIsRightColumnShown, selectTabState } from '../../global/selectors';
 import { selectSharedSettings } from '../../global/selectors/sharedState';
@@ -27,6 +27,7 @@ import './Avatar.scss';
 import appStyles from '../App.module.scss';
 import styles from './UiLoader.module.scss';
 
+import starIconPath from '../../assets/icons/star/star.webp';
 import lockPreviewPath from '../../assets/lock.png';
 import monkeyPath from '../../assets/monkey.svg';
 import spoilerMaskPath from '../../assets/spoilers/mask.svg';
@@ -84,6 +85,7 @@ const preloadTasks = {
       .then(preloadFonts),
     preloadAvatars(),
     preloadImage(spoilerMaskPath),
+    preloadImage(starIconPath),
     localizationReadyPromise,
   ]),
   authPhoneNumber: () => Promise.all([
@@ -179,14 +181,14 @@ export default withGlobal<OwnProps>(
   (global, { isMobile }): Complete<StateProps> => {
     const tabState = selectTabState(global);
 
-    const { tabsPosition } = selectSharedSettings(global);
+    const { foldersPosition } = selectSharedSettings(global);
 
     return {
       shouldSkipHistoryAnimations: tabState.shouldSkipHistoryAnimations,
       uiReadyState: tabState.uiReadyState,
       isRightColumnShown: selectIsRightColumnShown(global, isMobile),
       leftColumnWidth: global.leftColumnWidth,
-      isFoldersSidebarShown: tabsPosition === TABS_POSITION_LEFT && !isMobile && selectAreFoldersPresent(global),
+      isFoldersSidebarShown: foldersPosition === FOLDERS_POSITION_LEFT && !isMobile && selectAreFoldersPresent(global),
     };
   },
 )(UiLoader);

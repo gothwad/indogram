@@ -7,13 +7,13 @@ import {
   useSignal,
 } from '../../lib/teact/teact';
 
-import type { ApiDimensions } from '../../api/types';
+import type { StoryboardInfo } from '../../api/types';
 import type { BufferedRange } from '../../hooks/useBuffering';
 import type { IconName } from '../../types/icons';
 
 import { IS_IOS, IS_TOUCH_ENV } from '../../util/browser/windowEnvironment';
 import buildClassName from '../../util/buildClassName';
-import { formatMediaDuration } from '../../util/dates/dateFormat';
+import { formatMediaDuration } from '../../util/dates/oldDateFormat';
 
 import useAppLayout from '../../hooks/useAppLayout';
 import useCurrentTimeSignal from '../../hooks/useCurrentTimeSignal';
@@ -24,7 +24,6 @@ import useOldLang from '../../hooks/useOldLang';
 import useControlsSignal from './hooks/useControlsSignal';
 
 import AnimatedFileSize from '../common/AnimatedFileSize';
-import Icon from '../common/icons/Icon';
 import Button from '../ui/Button';
 import Menu from '../ui/Menu';
 import MenuItem from '../ui/MenuItem';
@@ -34,7 +33,7 @@ import SeekLine from './SeekLine';
 import './VideoPlayerControls.scss';
 
 type OwnProps = {
-  url?: string;
+  storyboardInfo?: StoryboardInfo;
   bufferedRanges: BufferedRange[];
   bufferedProgress: number;
   duration: number;
@@ -45,12 +44,10 @@ type OwnProps = {
   isFullscreenSupported: boolean;
   isPictureInPictureSupported: boolean;
   isFullscreen: boolean;
-  isPreviewDisabled?: boolean;
   isBuffered: boolean;
   volume: number;
   isMuted: boolean;
   playbackRate: number;
-  posterSize?: ApiDimensions;
   onChangeFullscreen: (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   onPictureInPictureChange?: () => void;
   onVolumeClick: () => void;
@@ -75,7 +72,7 @@ const PLAYBACK_RATES = [
 const HIDE_CONTROLS_TIMEOUT_MS = 3000;
 
 const VideoPlayerControls: FC<OwnProps> = ({
-  url,
+  storyboardInfo,
   bufferedRanges,
   bufferedProgress,
   duration,
@@ -86,16 +83,14 @@ const VideoPlayerControls: FC<OwnProps> = ({
   isFullscreenSupported,
   isFullscreen,
   isBuffered,
-  isPreviewDisabled,
   volume,
   isMuted,
   playbackRate,
-  posterSize,
+  isPictureInPictureSupported,
   onChangeFullscreen,
   onVolumeClick,
   onVolumeChange,
   onPlaybackRateChange,
-  isPictureInPictureSupported,
   onPictureInPictureChange,
   onPlayPause,
   onSeek,
@@ -169,12 +164,10 @@ const VideoPlayerControls: FC<OwnProps> = ({
       onClick={stopEvent}
     >
       <SeekLine
-        url={url}
+        storyboardInfo={storyboardInfo}
         duration={duration}
         isReady={isReady}
         isPlaying={isPlaying}
-        isPreviewDisabled={isPreviewDisabled}
-        posterSize={posterSize}
         bufferedRanges={bufferedRanges}
         playbackRate={playbackRate}
         onSeek={handleSeek}
@@ -190,9 +183,8 @@ const VideoPlayerControls: FC<OwnProps> = ({
           className="play"
           round
           onClick={onPlayPause}
-        >
-          <Icon name={isPlaying ? 'pause' : 'play'} />
-        </Button>
+          iconName={isPlaying ? 'pause' : 'play'}
+        />
         <Button
           ariaLabel="Volume"
           size="tiny"
@@ -200,9 +192,8 @@ const VideoPlayerControls: FC<OwnProps> = ({
           className="volume"
           round
           onClick={onVolumeClick}
-        >
-          <Icon name={volumeIcon} />
-        </Button>
+          iconName={volumeIcon}
+        />
         {!IS_IOS && (
           <RangeSlider bold className="volume-slider" value={isMuted ? 0 : volume * 100} onChange={onVolumeChange} />
         )}
@@ -231,9 +222,8 @@ const VideoPlayerControls: FC<OwnProps> = ({
             className="fullscreen"
             round
             onClick={onPictureInPictureChange}
-          >
-            <Icon name="pip" />
-          </Button>
+            iconName="pip"
+          />
         )}
         {isFullscreenSupported && (
           <Button
@@ -243,9 +233,8 @@ const VideoPlayerControls: FC<OwnProps> = ({
             className="fullscreen"
             round
             onClick={onChangeFullscreen}
-          >
-            <Icon name={isFullscreen ? 'smallscreen' : 'fullscreen'} />
-          </Button>
+            iconName={isFullscreen ? 'smallscreen' : 'fullscreen'}
+          />
         )}
       </div>
       <Menu

@@ -13,10 +13,11 @@ import {
   MESSAGE_LIST_SLICE,
   SERVICE_NOTIFICATIONS_USER_ID,
 } from '../../config';
-import { forceMeasure, requestForcedReflow, requestMeasure, requestMutation } from '../../lib/fasterdom/fasterdom';
+import { forceMeasure, requestMeasure, requestMutation } from '../../lib/fasterdom/fasterdom';
 import {
   getIsSavedDialog,
   getMessageHtmlId,
+  getMessageOriginalId,
   isAnonymousForwardsChat,
   isChatChannel,
   isChatGroup,
@@ -40,18 +41,22 @@ import {
   selectIsCurrentUserPremium,
   selectIsInSelectMode,
   selectIsViewportNewest,
-  selectLastScrollOffset,
   selectMonoforumChannel,
   selectPerformanceSettingsValue,
-  selectScrollOffset,
   selectTabState,
-  selectThreadInfo,
   selectTopic,
   selectTranslationLanguage,
+  selectUser,
   selectUserFullInfo,
 } from '../../global/selectors';
 import { selectIsChatRestricted } from '../../global/selectors/chats';
 import { selectActiveRestrictionReasons, selectCurrentMessageList } from '../../global/selectors/messages';
+import {
+  selectLastScrollOffset,
+  selectScrollOffset,
+  selectThreadInfo,
+  selectThreadReadState,
+} from '../../global/selectors/threads';
 import animateScroll, { isAnimatingScroll, restartCurrentScrollAnimation } from '../../util/animateScroll';
 import { IS_FIREFOX } from '../../util/browser/windowEnvironment';
 import buildClassName from '../../util/buildClassName';
@@ -63,6 +68,7 @@ import { debounce, onTickEnd } from '../../util/schedulers';
 import getOffsetToContainer from '../../util/visibility/getOffsetToContainer';
 import { REM } from '../common/helpers/mediaDimensions';
 import { groupMessages } from './helpers/groupMessages';
+import { requestMessageListReflow } from './helpers/messageListReflow';
 import { preventMessageInputBlur } from './helpers/preventMessageInputBlur';
 
 import useInterval from '../../hooks/schedulers/useInterval';
@@ -145,7 +151,7 @@ type StateProps = {
   translationLanguage?: string;
   shouldAutoTranslate?: boolean;
   isActive?: boolean;
-  isBotForum?: boolean;
+  canManageBotForumTopics?: boolean;
   shouldScrollToBottom?: boolean;
 };
 
@@ -195,7 +201,7 @@ const MessageList = ({
   canPost,
   isSynced,
   isActive,
-  isBotForum,
+  canManageBotForumTopics,
   shouldScrollToBottom,
   // eslint-disable-next-line @typescript-eslint/no-shadow
   isChatMonoforum,
@@ -265,11 +271,17 @@ const MessageList = ({
   const memoUnreadDividerBeforeIdRef = useRef<number | undefined>();
   const memoFocusingIdRef = useRef<number>();
   const isScrollTopJustUpdatedRef = useRef(false);
+  // Suppresses spurious load-more triggers caused by Safari delivering stale
+  // `IntersectionObserver` entries between DOM mutation and scroll restore
+  const isReplacingHistoryRef = useRef(false);
   const shouldAnimateAppearanceRef = useRef(Boolean(lastMessage));
   const scrollSnapDisabledTimerRef = useRef<number>();
+  const typingDraftSnapTriggeredIdRef = useRef<number>();
 
   const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
-  const hasOpenChatButton = isSavedDialog && threadId !== ANONYMOUS_USER_ID;
+  const hasOpenChatButton = isSavedDialog
+    && threadId !== ANONYMOUS_USER_ID
+    && threadId !== currentUserId;
 
   const areMessagesLoaded = Boolean(messageIds);
 
@@ -394,6 +406,13 @@ const MessageList = ({
     isServiceNotificationsChat, isForum,
     threadId, isChatWithSelf, channelJoinInfo]);
 
+  const currentLastMessageOriginalId = useMemo(() => {
+    const currentLastMessageId = messageIds?.[messageIds.length - 1];
+    const currentLastMessage = currentLastMessageId !== undefined ? messagesById?.[currentLastMessageId] : undefined;
+
+    return currentLastMessage ? getMessageOriginalId(currentLastMessage) : currentLastMessageId;
+  }, [messageIds, messagesById]);
+
   useInterval(() => {
     if (!messageIds || !messagesById || type === 'scheduled' || isAccountFrozen || !isActive) return;
     if (!isChannelChat && !isGroupChat) return;
@@ -498,6 +517,31 @@ const MessageList = ({
     }
   });
 
+  const handleTallTypingDraft = useLastCallback((messageId: number, isNearExit: boolean) => {
+    if (!isNearExit) {
+      if (typingDraftSnapTriggeredIdRef.current === messageId) {
+        typingDraftSnapTriggeredIdRef.current = undefined;
+      }
+      return;
+    }
+
+    if (typingDraftSnapTriggeredIdRef.current === messageId) {
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container || !container.classList.contains(BOTTOM_SNAP_CLASS)) return;
+
+    typingDraftSnapTriggeredIdRef.current = messageId;
+
+    clearTimeout(scrollSnapDisabledTimerRef.current);
+    scrollSnapDisabledTimerRef.current = undefined;
+
+    requestMutation(() => {
+      removeExtraClass(container, BOTTOM_SNAP_CLASS);
+    });
+  });
+
   const handleScroll = useLastCallback(() => {
     if (isScrollTopJustUpdatedRef.current) {
       isScrollTopJustUpdatedRef.current = false;
@@ -595,7 +639,10 @@ const MessageList = ({
   });
 
   useSyncEffect(
-    () => forceMeasure(() => rememberScrollPositionRef.current()),
+    () => {
+      isReplacingHistoryRef.current = true;
+      forceMeasure(() => rememberScrollPositionRef.current());
+    },
     // This will run before modifying content and should match deps for `useLayoutEffectWithPrevDeps` below
     [messageIds, isViewportNewest, rememberScrollPositionRef],
   );
@@ -606,7 +653,7 @@ const MessageList = ({
   );
 
   // Handles updated message list, takes care of scroll repositioning
-  useLayoutEffectWithPrevDeps(([prevMessageIds, prevIsViewportNewest]) => {
+  useLayoutEffectWithPrevDeps(([prevMessageIds, prevIsViewportNewest, prevCurrentLastMessageOriginalId]) => {
     if (process.env.APP_ENV === 'perf') {
       // eslint-disable-next-line no-console
       console.time('scrollTop');
@@ -633,9 +680,7 @@ const MessageList = ({
       ? container.querySelector<HTMLDivElement>(`#${getMessageHtmlId(memoFirstUnreadIdRef.current)}`)
       : undefined;
 
-    const hasLastMessageChanged = (
-      messageIds && prevMessageIds && messageIds[messageIds.length - 1] !== prevMessageIds[prevMessageIds.length - 1]
-    );
+    const hasLastMessageChanged = currentLastMessageOriginalId !== prevCurrentLastMessageOriginalId;
     const hasViewportShifted = (
       messageIds?.[0] !== prevMessageIds?.[0] && messageIds?.length === (MESSAGE_LIST_SLICE / 2 + 1)
     );
@@ -667,14 +712,12 @@ const MessageList = ({
       removeExtraClass(container, BOTTOM_SNAP_CLASS);
 
       scrollSnapDisabledTimerRef.current = window.setTimeout(() => {
-        requestMutation(() => {
-          addExtraClass(container, BOTTOM_SNAP_CLASS);
-          scrollSnapDisabledTimerRef.current = undefined;
-        });
+        scrollSnapDisabledTimerRef.current = undefined;
+        updateBottomSnapClass();
       }, MESSAGE_ANIMATION_DURATION);
     }
 
-    requestForcedReflow(() => {
+    requestMessageListReflow(() => {
       const { scrollTop, scrollHeight, offsetHeight } = container;
       const scrollOffset = scrollOffsetRef.current;
 
@@ -733,6 +776,9 @@ const MessageList = ({
 
       return () => {
         resetScroll(container, Math.ceil(newScrollTop));
+        requestMeasure(() => {
+          isReplacingHistoryRef.current = false;
+        });
         restartCurrentScrollAnimation();
 
         scrollOffsetRef.current = Math.max(Math.ceil(scrollHeight - newScrollTop), offsetHeight);
@@ -742,6 +788,8 @@ const MessageList = ({
 
           requestMeasure(() => {
             isScrollTopJustUpdatedRef.current = false;
+
+            updateBottomSnapClass();
           });
         }
 
@@ -752,7 +800,14 @@ const MessageList = ({
       };
     });
     // This should match deps for `useSyncEffect` above
-  }, [messageIds, isViewportNewest, getContainerHeight, prevContainerHeightRef, noMessageSendingAnimation]);
+  }, [
+    messageIds,
+    isViewportNewest,
+    currentLastMessageOriginalId,
+    getContainerHeight,
+    prevContainerHeightRef,
+    noMessageSendingAnimation,
+  ]);
 
   useEffectWithPrevDeps(([prevIsSelectModeActive]) => {
     if (prevIsSelectModeActive !== undefined) {
@@ -806,7 +861,7 @@ const MessageList = ({
     Content.StarsRequired
   ) : isContactRequirePremium && !hasMessages ? (
     Content.PremiumRequired
-  ) : (isBot || isNonContact) && !hasMessages ? (
+  ) : (isBot || isNonContact) && !hasMessages && threadId === MAIN_THREAD_ID ? (
     Content.AccountInfo
   ) : shouldRenderGreeting ? (
     Content.ContactGreeting
@@ -861,6 +916,7 @@ const MessageList = ({
         anchorIdRef={anchorIdRef}
         memoUnreadDividerBeforeIdRef={memoUnreadDividerBeforeIdRef}
         memoFirstUnreadIdRef={memoFirstUnreadIdRef}
+        isReplacingHistoryRef={isReplacingHistoryRef}
         threadId={threadId}
         type={type}
         isReady={isReady}
@@ -872,11 +928,12 @@ const MessageList = ({
         noAppearanceAnimation={!messageGroups || !shouldAnimateAppearanceRef.current}
         isQuickPreview={isQuickPreview}
         canPost={canPost}
-        isBotForum={isBotForum}
+        canManageBotForumTopics={canManageBotForumTopics}
         shouldScrollToBottom={shouldScrollToBottom}
         onScrollDownToggle={onScrollDownToggle}
         onNotchToggle={onNotchToggle}
         onIntersectPinnedMessage={onIntersectPinnedMessage}
+        onTallTypingDraft={handleTallTypingDraft}
       />
     ) : (
       <Loading color="white" backgroundColor="dark" />
@@ -904,33 +961,37 @@ export default memo(withGlobal<OwnProps>(
     const tabState = selectTabState(global);
     const currentUserId = global.currentUserId!;
     const chat = selectChat(global, chatId);
+    const user = selectUser(global, chatId);
     const userFullInfo = selectUserFullInfo(global, chatId);
+    const readState = selectThreadReadState(global, chatId, threadId);
     if (!chat) {
       return { currentUserId } as Complete<StateProps>;
     }
 
     const messageIds = selectCurrentMessageIds(global, chatId, threadId, type);
+    const chatMessagesById = selectChatMessages(global, chatId);
     const messagesById = type === 'scheduled'
       ? selectChatScheduledMessages(global, chatId)
-      : selectChatMessages(global, chatId);
+      : chatMessagesById;
 
     const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
 
     if (
       threadId !== MAIN_THREAD_ID && !isSavedDialog && !chat?.isForum
-      && !(messagesById && threadId && messagesById[Number(threadId)])
+      && !(chatMessagesById && threadId && chatMessagesById[Number(threadId)])
     ) {
       return { currentUserId } as Complete<StateProps>;
     }
 
     const isRestricted = selectIsChatRestricted(global, chatId);
     const restrictionReasons = selectActiveRestrictionReasons(global, chat?.restrictionReasons);
-    const lastMessage = selectChatLastMessage(global, chatId, isSavedDialog ? 'saved' : 'all');
+    const lastMessage = type === 'thread' ? selectChatLastMessage(global, chatId, isSavedDialog ? 'saved' : 'all')
+      : undefined;
     const focusingId = selectFocusedMessageId(global, chatId);
 
     const withLastMessageWhenPreloading = (
       threadId === MAIN_THREAD_ID
-      && !messageIds && !chat.unreadCount && !focusingId && lastMessage && !lastMessage.groupedId
+      && !messageIds && readState && !readState.unreadCount && !focusingId && lastMessage && !lastMessage.groupedId
     );
 
     const chatBot = selectBot(global, chatId);
@@ -940,7 +1001,7 @@ export default memo(withGlobal<OwnProps>(
 
     const topic = selectTopic(global, chatId, threadId);
     const chatFullInfo = !isUserId(chatId) ? selectChatFullInfo(global, chatId) : undefined;
-    const isEmptyThread = !selectThreadInfo(global, chatId, threadId)?.messagesCount;
+    const isEmptyThread = selectThreadInfo(global, chatId, threadId)?.messagesCount === 0;
 
     const isCurrentUserPremium = selectIsCurrentUserPremium(global);
     const areAdsEnabled = !isCurrentUserPremium || selectUserFullInfo(global, currentUserId)?.areAdsEnabled;
@@ -1007,7 +1068,7 @@ export default memo(withGlobal<OwnProps>(
       canTranslate,
       translationLanguage,
       shouldAutoTranslate,
-      isBotForum: chat.isBotForum,
+      canManageBotForumTopics: chat.isBotForum && user?.canManageBotForumTopics,
       shouldScrollToBottom,
     };
   },

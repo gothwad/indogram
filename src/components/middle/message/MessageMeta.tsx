@@ -8,8 +8,9 @@ import type {
 } from '../../../api/types';
 
 import buildClassName from '../../../util/buildClassName';
-import { formatDateTimeToString, formatPastTimeShort, formatTime } from '../../../util/dates/dateFormat';
+import { formatDateTimeToString, formatPastTimeShort, formatTime } from '../../../util/dates/oldDateFormat';
 import { formatStarsAsIcon } from '../../../util/localization/format';
+import { getRepeatPeriodText } from '../../../util/scheduledMessages';
 import { formatIntegerCompact } from '../../../util/textFormat';
 import renderText from '../../common/helpers/renderText';
 
@@ -83,6 +84,10 @@ const MessageMeta: FC<OwnProps> = ({
     onOpenThread();
   }
 
+  const repeatPeriodText = useMemo(() => {
+    return getRepeatPeriodText(message.scheduleRepeatPeriod, lang);
+  }, [message.scheduleRepeatPeriod, lang]);
+
   const dateTitle = useMemo(() => {
     if (!isActivated) return undefined;
     const createDateTime = formatDateTimeToString(message.date * 1000, oldLang.code, undefined, oldLang.timeFormat);
@@ -134,12 +139,16 @@ const MessageMeta: FC<OwnProps> = ({
 
   const date = useMemo(() => {
     const time = formatTime(oldLang, message.date * 1000);
-    if (!withFullDate) {
-      return time;
+    const baseDate = !withFullDate
+      ? time
+      : formatPastTimeShort(oldLang, (message.forwardInfo?.date || message.date) * 1000, true);
+
+    if (repeatPeriodText) {
+      return lang('FormatDateAtTime', { date: repeatPeriodText, time: baseDate });
     }
 
-    return formatPastTimeShort(oldLang, (message.forwardInfo?.date || message.date) * 1000, true);
-  }, [oldLang, message.date, message.forwardInfo?.date, withFullDate]);
+    return baseDate;
+  }, [oldLang, message.date, message.forwardInfo?.date, withFullDate, repeatPeriodText, lang]);
 
   const fullClassName = buildClassName(
     'MessageMeta',
@@ -189,8 +198,6 @@ const MessageMeta: FC<OwnProps> = ({
           {
             formatStarsAsIcon(lang, paidMessageStars, {
               asFont: true,
-              className: 'message-price-star-icon',
-              containerClassName: 'message-price-stars-container',
             })
           }
         </span>

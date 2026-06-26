@@ -33,7 +33,6 @@ import useOldLang from '../../../hooks/useOldLang';
 
 import Avatar from '../../common/Avatar';
 import BadgeButton from '../../common/BadgeButton';
-import Icon from '../../common/icons/Icon';
 import PeerColorWrapper from '../../common/PeerColorWrapper';
 import Button from '../../ui/Button';
 import MessageAppendix from './MessageAppendix';
@@ -294,30 +293,32 @@ const SponsoredMessage: FC<OwnProps & StateProps> = ({
           {renderContent()}
         </PeerColorWrapper>
         <MessageAppendix />
-        <div className="message-action-buttons">
-          <Button
-            className="message-action-button"
-            color="translucent-white"
-            round
-            size="tiny"
-            ariaLabel={lang('Close')}
-            onClick={handleHideSponsoredMessage}
-          >
-            <Icon name="close" className="sponsored-action-icon" />
-          </Button>
-          {message.canReport && (
-            <Button
-              className="message-action-button"
-              color="translucent-white"
-              round
-              size="tiny"
-              ariaLabel={lang('More')}
-              onClick={handleContextMenu}
-              onContextMenu={handleContextMenu}
-            >
-              <Icon name="more" className="sponsored-action-icon" />
-            </Button>
-          )}
+        <div className="message-action-buttons-container">
+          <div className="message-action-buttons-sticky-zone">
+            <div className="message-action-buttons message-action-button-sticky">
+              <Button
+                className="message-action-button"
+                color="translucent-white"
+                round
+                iconName="close"
+                iconClassName="sponsored-action-icon"
+                ariaLabel={lang('Close')}
+                onClick={handleHideSponsoredMessage}
+              />
+              {message.canReport && (
+                <Button
+                  className="message-action-button"
+                  color="translucent-white"
+                  round
+                  iconName="more"
+                  iconClassName="sponsored-action-icon"
+                  ariaLabel={lang('More')}
+                  onClick={handleContextMenu}
+                  onContextMenu={handleContextMenu}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
       {contextMenuAnchor && (

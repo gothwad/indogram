@@ -61,8 +61,10 @@ const PERFORMANCE_OPTIONS: PerformanceSection[] = [
     { key: 'messageComposerAnimations', label: 'SettingsPerformanceComposer' },
     { key: 'contextMenuAnimations', label: 'SettingsPerformanceContextAnimation' },
     { key: 'contextMenuBlur', label: 'SettingsPerformanceContextBlur', disabled: !IS_BACKDROP_BLUR_SUPPORTED },
+    { key: 'messageBlur', label: 'SettingsPerformanceMessageBlur', disabled: !IS_BACKDROP_BLUR_SUPPORTED },
     { key: 'rightColumnAnimations', label: 'SettingsPerformanceRightColumn' },
     { key: 'snapEffect', label: 'SettingsPerformanceThanos' },
+    { key: 'textStreaming', label: 'SettingsPerformanceTextStreaming' },
   ]],
   ['SettingsPerformanceStickers', [
     { key: 'animatedEmoji', label: 'SettingsPerformanceAnimatedEmoji' },

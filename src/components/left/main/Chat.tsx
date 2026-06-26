@@ -33,7 +33,6 @@ import {
   selectChatLastMessageId,
   selectChatMessage,
   selectCurrentMessageList,
-  selectDraft,
   selectIsCurrentUserFrozen,
   selectIsCurrentUserPremium,
   selectIsForumPanelClosed,
@@ -46,19 +45,19 @@ import {
   selectPeerStory,
   selectSender,
   selectTabState,
-  selectThreadParam,
   selectTopicFromMessage,
   selectTopicsInfo,
   selectUser,
   selectUserStatus,
 } from '../../../global/selectors';
+import { selectDraft, selectThreadLocalStateParam } from '../../../global/selectors/threads';
 import { IS_OPEN_IN_NEW_TAB_SUPPORTED } from '../../../util/browser/windowEnvironment';
 import buildClassName from '../../../util/buildClassName';
 import { isUserId } from '../../../util/entities/ids';
 import { getChatFolderIds } from '../../../util/folderManager';
 import { createLocationHash } from '../../../util/routing';
 
-import useSelectorSignal from '../../../hooks/data/useSelectorSignal';
+import { useSelectorSignal } from '../../../hooks/data/useSelector';
 import useAppLayout from '../../../hooks/useAppLayout';
 import useChatContextActions from '../../../hooks/useChatContextActions';
 import useEnsureMessage from '../../../hooks/useEnsureMessage';
@@ -87,6 +86,7 @@ type OwnProps = {
   chatId: string;
   folderId?: number;
   orderDiff: number;
+  shiftDiff: number;
   animationType: ChatAnimationTypes;
   isPinned?: boolean;
   offsetTop?: number;
@@ -95,11 +95,11 @@ type OwnProps = {
   previewMessageId?: number;
   className?: string;
   withTags?: boolean;
+  isFoldersSidebarShown?: boolean;
   observeIntersection?: ObserveFn;
   onDragEnter?: (chatId: string) => void;
   onDragLeave?: NoneToVoidFunction;
   onReorderAnimationEnd?: NoneToVoidFunction;
-  isFoldersSidebarShown?: boolean;
 };
 
 type StateProps = {
@@ -107,7 +107,6 @@ type StateProps = {
   monoforumChannel?: ApiChat;
   lastMessageStory?: ApiTypeStory;
   listedTopicIds?: number[];
-  topics?: Record<number, ApiTopic>;
   isMuted?: boolean;
   user?: ApiUser;
   userStatus?: ApiUserStatus;
@@ -120,7 +119,7 @@ type StateProps = {
   canScrollDown?: boolean;
   canChangeFolder?: boolean;
   lastMessageTopic?: ApiTopic;
-  typingStatus?: ApiTypingStatus;
+  typingStatusByPeerId?: Record<string, ApiTypingStatus>;
   withInterfaceAnimations?: boolean;
   lastMessageId?: number;
   lastMessage?: ApiMessage;
@@ -137,10 +136,10 @@ const Chat: FC<OwnProps & StateProps> = ({
   chatId,
   folderId,
   orderDiff,
+  shiftDiff,
   animationType,
   isPinned,
   listedTopicIds,
-  topics,
   observeIntersection,
   chat,
   monoforumChannel,
@@ -159,7 +158,7 @@ const Chat: FC<OwnProps & StateProps> = ({
   canScrollDown,
   canChangeFolder,
   lastMessageTopic,
-  typingStatus,
+  typingStatusByPeerId,
   lastMessageId,
   lastMessage,
   isSavedDialog,
@@ -168,16 +167,16 @@ const Chat: FC<OwnProps & StateProps> = ({
   previewMessageId,
   className,
   isSynced,
-  onDragEnter,
-  onDragLeave,
   isAccountFrozen,
   chatFolderIds,
   orderedFolderIds,
   chatFoldersById,
   areTagsEnabled,
   withTags,
-  onReorderAnimationEnd,
   isFoldersSidebarShown,
+  onDragEnter,
+  onDragLeave,
+  onReorderAnimationEnd,
 }) => {
   const {
     openChat,
@@ -205,6 +204,8 @@ const Chat: FC<OwnProps & StateProps> = ({
 
   const { isForum, isForumAsMessages, isMonoforum } = chat || {};
 
+  const shouldForceNonForumView = chat?.isBotForum && listedTopicIds && !listedTopicIds.length;
+
   useEnsureMessage(isSavedDialog ? currentUserId : chatId, lastMessageId, lastMessage);
 
   const tagFolderIds = useMemo(() => {
@@ -230,7 +231,7 @@ const Chat: FC<OwnProps & StateProps> = ({
     chat,
     chatId,
     lastMessage,
-    typingStatus,
+    typingStatusByPeerId,
     draft,
     statefulMediaContent: groupStatefulContent({ story: lastMessageStory }),
     lastMessageTopic,
@@ -239,11 +240,13 @@ const Chat: FC<OwnProps & StateProps> = ({
     animationType,
     withInterfaceAnimations,
     orderDiff,
+    shiftDiff,
     isSavedDialog,
     isPreview,
     onReorderAnimationEnd,
-    topics,
+    topicIds: listedTopicIds,
     hasTags: shouldRenderTags,
+    shouldForceNonForumView,
   });
 
   const getIsForumPanelClosed = useSelectorSignal(selectIsForumPanelClosed);
@@ -255,7 +258,7 @@ const Chat: FC<OwnProps & StateProps> = ({
       return;
     }
 
-    const noForumTopicPanel = isMobile && isForumAsMessages;
+    const noForumTopicPanel = (isMobile && isForumAsMessages) || shouldForceNonForumView;
 
     if (isMobile) {
       setShouldCloseRightColumn({ value: true });
@@ -288,7 +291,7 @@ const Chat: FC<OwnProps & StateProps> = ({
           openForumPanel({ chatId }, { forceOnHeavyAnimation: true });
         }
 
-        if (!isForumAsMessages) return;
+        if (!isForumAsMessages && !shouldForceNonForumView) return;
       }
     }
 
@@ -363,7 +366,7 @@ const Chat: FC<OwnProps & StateProps> = ({
     isSavedDialog,
     currentUserId,
     isPreview,
-    topics,
+    topicIds: listedTopicIds,
   });
 
   const isIntersecting = useIsIntersecting(ref, chat ? observeIntersection : undefined);
@@ -397,7 +400,7 @@ const Chat: FC<OwnProps & StateProps> = ({
   const chatClassName = buildClassName(
     'Chat chat-item-clickable',
     isUserId(chatId) ? 'private' : 'group',
-    isForum && 'forum',
+    isForum && !shouldForceNonForumView && 'forum',
     isSelected && 'selected',
     isSelectedForum && 'selected-forum',
     isPreview && 'standalone',
@@ -410,7 +413,7 @@ const Chat: FC<OwnProps & StateProps> = ({
       ref={ref}
       className={chatClassName}
       href={href}
-      style={`top: ${offsetTop}px`}
+      style={offsetTop !== undefined ? `top: ${offsetTop}px` : undefined}
       ripple={!isForum && !isMobile}
       contextActions={contextActions}
       withPortalForMenu
@@ -419,30 +422,31 @@ const Chat: FC<OwnProps & StateProps> = ({
       onDragLeave={onDragLeave}
     >
       <div className={buildClassName('status', 'status-clickable')}>
-        <Avatar
-          peer={isMonoforum ? monoforumChannel : peer}
-          isSavedMessages={user?.isSelf}
-          isSavedDialog={isSavedDialog}
-          size={isPreview ? 'medium' : 'large'}
-          asMessageBubble={isMonoforum}
-          withStory={!user?.isSelf && !isMonoforum}
-          withStoryGap={isAvatarOnlineShown || Boolean(chat.subscriptionUntil)}
-          storyViewerOrigin={StoryViewerOrigin.ChatList}
-          storyViewerMode="single-peer"
-        />
-        <div className="avatar-badge-wrapper">
-          <div
-            className={buildClassName('avatar-online', 'avatar-badge', isAvatarOnlineShown && 'avatar-online-shown')}
+        <div className="avatar-wrapper">
+          <Avatar
+            peer={isMonoforum ? monoforumChannel : peer}
+            isSavedMessages={user?.isSelf}
+            isSavedDialog={isSavedDialog}
+            size={isPreview ? 'medium' : 'large'}
+            asMessageBubble={isMonoforum}
+            withStory={!user?.isSelf && !isMonoforum}
+            withStoryGap={isAvatarOnlineShown || Boolean(chat.subscriptionUntil)}
+            storyViewerOrigin={StoryViewerOrigin.ChatList}
+            storyViewerMode="single-peer"
           />
-          {!isAvatarOnlineShown && Boolean(chat.subscriptionUntil) && (
-            <StarIcon type="gold" className="avatar-badge avatar-subscription" size="adaptive" />
-          )}
+          <div className="avatar-badge-wrapper">
+            <div
+              className={buildClassName('avatar-online', 'avatar-badge', isAvatarOnlineShown && 'avatar-online-shown')}
+            />
+            {!isAvatarOnlineShown && Boolean(chat.subscriptionUntil) && (
+              <StarIcon type="gold" className="avatar-badge avatar-subscription" size="adaptive" />
+            )}
+          </div>
           <ChatBadge
             chat={chat}
             isMuted={isMuted}
             shouldShowOnlyMostImportant
             forceHidden={getIsForumPanelClosed}
-            topics={topics}
             isSelected={isSelected}
             isOnAvatar
           />
@@ -482,7 +486,6 @@ const Chat: FC<OwnProps & StateProps> = ({
               isMuted={isMuted}
               isSavedDialog={isSavedDialog}
               hasMiniApp={user?.hasMainMiniApp}
-              topics={topics}
               isSelected={isSelected}
               transitionClassName="chat-badge-transition"
             />
@@ -554,7 +557,7 @@ export default memo(withGlobal<OwnProps>(
     const {
       chatId: currentChatId,
       threadId: currentThreadId,
-      type: messageListType,
+      type: currentMessageListType,
     } = selectCurrentMessageList(global) || {};
     const isSelected = !isPreview && chatId === currentChatId && (isSavedDialog
       ? chatId === currentThreadId : currentThreadId === MAIN_THREAD_ID);
@@ -564,7 +567,7 @@ export default memo(withGlobal<OwnProps>(
     const userStatus = selectUserStatus(global, chatId);
     const lastMessageTopic = lastMessage && selectTopicFromMessage(global, lastMessage);
 
-    const typingStatus = selectThreadParam(global, chatId, MAIN_THREAD_ID, 'typingStatus');
+    const typingStatusByPeerId = selectThreadLocalStateParam(global, chatId, MAIN_THREAD_ID, 'typingStatusByPeerId');
 
     const topicsInfo = selectTopicsInfo(global, chatId);
 
@@ -582,19 +585,20 @@ export default memo(withGlobal<OwnProps>(
       isSelected,
       isSelectedForum,
       isForumPanelOpen: selectIsForumPanelOpen(global),
-      canScrollDown: isSelected && messageListType === 'thread',
+      canScrollDown: isSelected && currentMessageListType === 'thread',
       canChangeFolder: (global.chatFolders.orderedIds?.length || 0) > 1,
-      lastMessageOutgoingStatus: isOutgoing && lastMessage ? selectOutgoingStatus(global, lastMessage) : undefined,
+      lastMessageOutgoingStatus: isOutgoing && lastMessage && !isSavedDialog
+        ? selectOutgoingStatus(global, chatId, MAIN_THREAD_ID, lastMessage.id, 'thread')
+        : undefined,
       user,
       userStatus,
       lastMessageTopic,
-      typingStatus,
+      typingStatusByPeerId,
       withInterfaceAnimations: selectCanAnimateInterface(global),
       lastMessage,
       lastMessageId,
       currentUserId: global.currentUserId!,
       listedTopicIds: topicsInfo?.listedTopicIds,
-      topics: topicsInfo?.topicsById,
       isSynced: global.isSynced,
       lastMessageStory,
       isAccountFrozen,

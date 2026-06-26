@@ -14,16 +14,19 @@ import type {
   ApiEmojiStatusType,
   ApiGroupCall,
   ApiMessage,
+  ApiMessagePoll,
   ApiNotifyPeerType,
   ApiPaidReactionPrivacyType,
+  ApiPasskey,
+  ApiPasskeyOption,
   ApiPeerColors,
   ApiPeerNotifySettings,
   ApiPeerPhotos,
   ApiPeerStories,
   ApiPhoneCall,
-  ApiPoll,
   ApiPrivacyKey,
   ApiPrivacySettings,
+  ApiPromoData,
   ApiQuickReply,
   ApiReaction,
   ApiReactionKey,
@@ -31,6 +34,7 @@ import type {
   ApiSavedStarGift,
   ApiSession,
   ApiSponsoredMessage,
+  ApiStarGiftAuctionState,
   ApiStarGiftCollection,
   ApiStarGiftRegular,
   ApiStarsAmount,
@@ -66,6 +70,7 @@ import type {
   StarGiftCategory,
   StarsSubscriptions,
   StarsTransactionHistory,
+  TextSummary,
   ThemeKey,
   Thread,
   ThreadId,
@@ -81,13 +86,12 @@ export type GlobalState = {
   isInited: boolean;
   config?: ApiConfig;
   appConfig: ApiAppConfig;
+  promoData?: ApiPromoData;
   peerColors?: ApiPeerColors;
   timezones?: {
     byId: Record<string, ApiTimezone>;
     hash: number;
   };
-  hasWebAuthTokenFailed?: boolean;
-  hasWebAuthTokenPasswordRequired?: true;
   isCacheApiSupported?: boolean;
   connectionState?: ApiUpdateConnectionStateType;
   currentUserId?: string;
@@ -103,6 +107,7 @@ export type GlobalState = {
   botFreezeAppealId?: string;
 
   audioPlayer: {
+    volume: number;
     lastPlaybackRate: number;
     isLastPlaybackRateActive?: boolean;
   };
@@ -144,20 +149,25 @@ export type GlobalState = {
     isLoading?: boolean;
   };
 
-  // TODO Move to `auth`.
-  isLoggingOut?: boolean;
-  authState?: ApiUpdateAuthorizationStateType;
-  authPhoneNumber?: string;
-  authIsLoading?: boolean;
-  authIsLoadingQrCode?: boolean;
-  authErrorKey?: RegularLangFnParameters;
-  authRememberMe?: boolean;
-  authNearestCountry?: string;
-  authIsCodeViaApp?: boolean;
-  authHint?: string;
-  authQrCode?: {
-    token: string;
-    expires: number;
+  auth: {
+    isLoggingOut?: boolean;
+    state?: ApiUpdateAuthorizationStateType;
+    phoneNumber?: string;
+    isLoading?: boolean;
+    isLoadingQrCode?: boolean;
+    errorKey?: RegularLangFnParameters;
+    rememberMe?: boolean;
+    nearestCountry?: string;
+    isCodeViaApp?: boolean;
+    hint?: string;
+    qrCode?: {
+      token: string;
+      expires: number;
+    };
+    passkeyOption?: ApiPasskeyOption;
+
+    hasWebAuthTokenFailed?: true;
+    hasWebAuthTokenPasswordRequired?: true;
   };
   countryList: {
     phoneCodes: ApiCountryCode[];
@@ -236,13 +246,14 @@ export type GlobalState = {
   messages: {
     byChatId: Record<string, {
       byId: Record<number, ApiMessage>;
+      summaryById: Record<number, TextSummary>;
       threadsById: Record<ThreadId, Thread>;
     }>;
     playbackByChatId: Record<string, {
       byId: Record<number, number>;
     }>;
     sponsoredByChatId: Record<string, ApiSponsoredMessage>;
-    pollById: Record<string, ApiPoll>;
+    pollById: Record<string, ApiMessagePoll>;
     webPageById: Record<string, ApiWebPage>;
   };
 
@@ -320,6 +331,8 @@ export type GlobalState = {
   starGiftCollections?: {
     byPeerId: Record<string, ApiStarGiftCollection[]>;
   };
+  activeGiftAuctionIds?: string[];
+  giftAuctionByGiftId?: Record<string, ApiStarGiftAuctionState>;
 
   stickers: {
     setsById: Record<string, ApiStickerSet>;
@@ -356,6 +369,7 @@ export type GlobalState = {
       stickers: ApiSticker[];
       emojis: ApiSticker[];
     };
+    diceSetIdByEmoji?: Record<string, string>;
   };
 
   customEmojis: {
@@ -435,6 +449,7 @@ export type GlobalState = {
     botVerificationShownPeerIds: string[];
     themes: Partial<Record<ThemeKey, IThemeSettings>>;
     accountDaysTtl: number;
+    passkeys?: ApiPasskey[];
   };
 
   push?: {

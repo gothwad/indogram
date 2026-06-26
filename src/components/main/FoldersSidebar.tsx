@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from '@teact';
 import { getActions, withGlobal } from '../../global';
 
-import type { ApiChatFolder, ApiChatlistExportedInvite, ApiMessageEntityCustomEmoji } from '../../api/types';
+import type { ApiChatFolder, ApiChatlistExportedInvite } from '../../api/types';
 import { LeftColumnContent, SettingsScreens } from '../../types';
 
 import { selectTabState } from '../../global/selectors';
@@ -15,8 +15,6 @@ import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 import useScrolledState from '../../hooks/useScrolledState';
 
-import FolderIcon from '../common/FolderIcon';
-import Icon from '../common/icons/Icon';
 import MainMenuDropdown from '../common/MainMenuDropdown';
 import Button from '../ui/Button';
 import Folder from '../ui/Folder';
@@ -122,9 +120,9 @@ const FoldersSidebar = ({
         className={buildClassName(isOpen ? 'active' : '', styles.menuButton)}
         onClick={onTrigger}
         ariaLabel={lang('AriaLabelOpenMenu')}
-      >
-        <Icon name="menu" className={styles.icon} />
-      </Button>
+        iconName="menu"
+        iconClassName={styles.icon}
+      />
     );
   }, [lang]);
 
@@ -159,14 +157,8 @@ const FoldersSidebar = ({
             clickArg={i}
             contextActions={tab.contextActions}
             contextRootElementSelector="#FoldersSidebar"
+            icon={tab.emoticon}
             className={styles.tab}
-            icon={(
-              <FolderIcon
-                emoji={(tab.emoticon as string)}
-                customEmojiId={(tab.emoticon as ApiMessageEntityCustomEmoji)?.documentId}
-                shouldAnimate={tab.noTitleAnimations}
-              />
-            )}
           />
         ))}
       </div>
@@ -175,9 +167,9 @@ const FoldersSidebar = ({
         color="translucent"
         className={buildClassName(styles.menuButton, styles.settingsButton)}
         onClick={handleSettingsClick}
-      >
-        <Icon name="tools" className={styles.icon} />
-      </Button>
+        iconName="tools"
+        iconClassName={styles.icon}
+      />
     </div>
   );
 };
