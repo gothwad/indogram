@@ -1,0 +1,13 @@
+{
+  "name": "IndoGram",
+  "description": "Ultimately-polished, offline-first secure web companion client powered by the Telegram MTProto engine.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation",
+    "notifications"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
